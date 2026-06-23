@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { useT } from '../i18n'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -16,6 +17,7 @@ function MapClickHandler({ onMapClick }) {
 }
 
 export default function Step2Location({ form, update, onNext, onBack }) {
+  const { t } = useT()
   const [locating, setLocating] = useState(false)
   const [errors, setErrors]     = useState({})
 
@@ -52,7 +54,7 @@ export default function Step2Location({ form, update, onNext, onBack }) {
 
   const validate = () => {
     const e = {}
-    if (!form.latitude || !form.longitude) e.location = 'Please place a pin on the map or use GPS'
+    if (!form.latitude || !form.longitude) e.location = t('s2_err_location')
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -71,8 +73,8 @@ export default function Step2Location({ form, update, onNext, onBack }) {
           </svg>
         </div>
         <div className="card-header-text">
-          <h2>Collection Location</h2>
-          <p>Click the map to place a marker, or use GPS</p>
+          <h2>{t('s2_title')}</h2>
+          <p>{t('s2_subtitle')}</p>
         </div>
       </div>
 
@@ -80,12 +82,12 @@ export default function Step2Location({ form, update, onNext, onBack }) {
         {/* Toolbar */}
         <div className="map-toolbar">
           <button className="btn btn-secondary" onClick={handleGPS} disabled={locating} style={{ height: 38, fontSize: 13 }}>
-            {locating ? <><div className="spinner dark" /> Locating…</> : (
+            {locating ? <><div className="spinner dark" /> {t('s2_gps_loading')}</> : (
               <>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/>
                 </svg>
-                Use My Location
+                {t('s2_gps')}
               </>
             )}
           </button>
@@ -93,7 +95,7 @@ export default function Step2Location({ form, update, onNext, onBack }) {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/>
             </svg>
-            Click anywhere on the map to set location
+            {t('s2_map_hint')}
           </span>
         </div>
 
@@ -118,22 +120,22 @@ export default function Step2Location({ form, update, onNext, onBack }) {
         {/* Coordinates */}
         <div className="map-coords">
           <div className="field">
-            <label className="field-label">Latitude (°)</label>
+            <label className="field-label">{t('s2_lat')}</label>
             <input type="number" step="0.000001" placeholder="e.g. 42.360082" value={form.latitude}
               onChange={e => update({ latitude: e.target.value })} />
           </div>
           <div className="field">
-            <label className="field-label">Longitude (°)</label>
+            <label className="field-label">{t('s2_lng')}</label>
             <input type="number" step="0.000001" placeholder="e.g. -71.058880" value={form.longitude}
               onChange={e => update({ longitude: e.target.value })} />
           </div>
           <div className="field">
-            <label className="field-label">Altitude (m)</label>
+            <label className="field-label">{t('s2_alt')}</label>
             <input type="number" step="0.1" placeholder="Auto-filled by GPS" value={form.altitude}
               onChange={e => update({ altitude: e.target.value })} />
           </div>
           <div className="field">
-            <label className="field-label">Accuracy (m)</label>
+            <label className="field-label">{t('s2_acc')}</label>
             <input type="number" step="0.1" placeholder="Auto-filled by GPS" value={form.accuracy}
               onChange={e => update({ accuracy: e.target.value })} />
           </div>
@@ -141,10 +143,10 @@ export default function Step2Location({ form, update, onNext, onBack }) {
 
         {/* Locality */}
         <div className="field">
-          <label className="field-label">Locality</label>
-          <input type="text" placeholder="e.g. North side of Lake Huron, near boat launch"
+          <label className="field-label">{t('s2_locality')}</label>
+          <input type="text" placeholder={t('s2_locality_ph')}
             value={form.locality} onChange={e => update({ locality: e.target.value })} />
-          <span className="field-hint">Descriptive name or address of the site</span>
+          <span className="field-hint">{t('s2_locality_hint')}</span>
         </div>
       </div>
 
@@ -153,10 +155,10 @@ export default function Step2Location({ form, update, onNext, onBack }) {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M15 18l-6-6 6-6"/>
           </svg>
-          Back
+          {t('btn_back')}
         </button>
         <button className="btn btn-primary" onClick={handleNext}>
-          Next
+          {t('btn_next')}
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 18l6-6-6-6"/>
           </svg>

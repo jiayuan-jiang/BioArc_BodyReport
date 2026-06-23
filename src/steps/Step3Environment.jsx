@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fetchElevation, fetchWeather, fetchLandCover } from '../utils/environmentApi'
+import { useT } from '../i18n'
 
 const WMO_CODES = {
   0: 'Clear Sky', 1: 'Mainly Clear', 2: 'Partly Cloudy', 3: 'Overcast',
@@ -24,14 +25,15 @@ function EnvItem({ label, value, sub, loading }) {
 }
 
 export default function Step3Environment({ form, update, onNext, onBack }) {
-  const [status, setStatus]   = useState('idle') // idle | loading | done | error
-  const [errMsg, setErrMsg]   = useState('')
+  const { t } = useT()
+  const [status, setStatus] = useState('idle')
+  const [errMsg, setErrMsg] = useState('')
 
   const hasLocation = form.latitude && form.longitude
 
   useEffect(() => {
     if (!hasLocation) return
-    if (form.elevation !== null) return  // already fetched
+    if (form.elevation !== null) return
 
     const fetch = async () => {
       setStatus('loading')
@@ -53,7 +55,7 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
         setStatus('done')
       } catch {
         setStatus('error')
-        setErrMsg('Some environmental data could not be retrieved.')
+        setErrMsg(t('s3_error'))
       }
     }
 
@@ -75,8 +77,8 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
           </svg>
         </div>
         <div className="card-header-text">
-          <h2>Environmental Data</h2>
-          <p>Auto-fetched based on your location and collection date</p>
+          <h2>{t('s3_title')}</h2>
+          <p>{t('s3_subtitle')}</p>
         </div>
       </div>
 
@@ -86,14 +88,14 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
             </svg>
-            No location set — go back and place a map marker first.
+            {t('s3_no_location')}
           </div>
         )}
 
         {hasLocation && loading && (
           <div className="env-status loading">
             <div className="spinner dark" />
-            Fetching elevation, land cover, and weather data…
+            {t('s3_loading')}
           </div>
         )}
 
@@ -102,7 +104,7 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
             </svg>
-            {errMsg} You can continue — this data is optional.
+            {t('s3_error')} {t('s3_error_cont')}
           </div>
         )}
 
@@ -111,45 +113,45 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20 6L9 17l-5-5"/>
             </svg>
-            All environmental data retrieved successfully.
+            {t('s3_success')}
           </div>
         )}
 
         <div className="env-grid">
           <EnvItem
-            label="Elevation (DEM)"
+            label={t('s3_elevation')}
             value={form.elevation != null ? `${form.elevation} m` : null}
-            sub="SRTM via Open-Elevation"
+            sub={t('s3_sub_elev')}
             loading={loading}
           />
           <EnvItem
-            label="Land Cover (LUCC)"
+            label={t('s3_landcover')}
             value={form.landCover}
-            sub="ESA WorldCover 2021"
+            sub={t('s3_sub_lc')}
             loading={loading}
           />
           <EnvItem
-            label="Temperature"
+            label={t('s3_temperature')}
             value={form.temperature != null ? `${form.temperature} °C` : null}
             sub={form.collectionDate}
             loading={loading}
           />
           <EnvItem
-            label="Precipitation"
+            label={t('s3_precipitation')}
             value={form.precipitation != null ? `${form.precipitation} mm` : null}
-            sub="Daily total"
+            sub={t('s3_sub_precip')}
             loading={loading}
           />
           <EnvItem
-            label="Wind Speed"
+            label={t('s3_wind')}
             value={form.windSpeed != null ? `${form.windSpeed} km/h` : null}
-            sub="Max daily"
+            sub={t('s3_sub_wind')}
             loading={loading}
           />
           <EnvItem
-            label="Weather"
+            label={t('s3_weather')}
             value={weatherLabel}
-            sub="WMO classification"
+            sub={t('s3_sub_wmo')}
             loading={loading}
           />
         </div>
@@ -158,7 +160,7 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/>
           </svg>
-          Sources: Open-Elevation · Open-Meteo · ESA WorldCover — all free, no API key required
+          {t('s3_sources')}
         </div>
       </div>
 
@@ -167,11 +169,11 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M15 18l-6-6 6-6"/>
           </svg>
-          Back
+          {t('btn_back')}
         </button>
         <button className="btn btn-primary" onClick={onNext} disabled={loading}>
-          {loading ? <><div className="spinner" /> Fetching…</> : (
-            <>Next <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></>
+          {loading ? <><div className="spinner" /> {t('s3_fetching')}</> : (
+            <>{t('btn_next')} <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg></>
           )}
         </button>
       </div>

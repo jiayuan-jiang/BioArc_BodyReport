@@ -70,6 +70,39 @@ html, body, #root {
   margin-left: auto;
 }
 
+.lang-switcher {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--green-muted);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.lang-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background var(--transition), color var(--transition);
+  letter-spacing: 0.3px;
+}
+
+.lang-btn:hover {
+  color: var(--text-dark);
+  background: rgba(0,0,0,0.05);
+}
+
+.lang-btn.active {
+  background: var(--surface);
+  color: var(--green-primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
 .app-main {
   flex: 1;
   display: flex;

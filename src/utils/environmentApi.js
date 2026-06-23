@@ -62,14 +62,35 @@ export async function fetchLandCover(lat, lng) {
 }
 
 async function fetchLandCoverOSM(lat, lng) {
-  const query = `[out:json];is_in(${lat},${lng})->.a;way(pivot.a)[landuse];out tags 1;`
-  const res = await fetch('https://overpass-api.de/api/interpreter', {
-    method: 'POST',
-    body: query,
-  })
+  const query = `[out:json][timeout:10];(way[landuse](around:300,${lat},${lng});relation[landuse](around:300,${lat},${lng});way["natural"](around:300,${lat},${lng}););out tags 1;`
+  try {
+    const res = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `data=${encodeURIComponent(query)}`,
+      signal: AbortSignal.timeout(12000),
+    })
+    if (res.ok && (res.headers.get('content-type') || '').includes('json')) {
+      const data = await res.json()
+      const tags = data.elements?.[0]?.tags
+      const tag = tags?.landuse || tags?.natural
+      if (tag) return tag.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    }
+  } catch { /* fall through to Nominatim */ }
+
+  return fetchLandCoverNominatim(lat, lng)
+}
+
+async function fetchLandCoverNominatim(lat, lng) {
+  const res = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+    { headers: { 'User-Agent': 'BioARC/1.0' } }
+  )
   if (!res.ok) throw new Error('Land cover fetch failed')
   const data = await res.json()
-  const landuse = data.elements?.[0]?.tags?.landuse
-  if (!landuse) return null
-  return landuse.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  const cls = data.class
+  const type = data.type
+  if (!cls) return null
+  const raw = (type && type !== cls) ? `${cls} / ${type}` : cls
+  return raw.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }

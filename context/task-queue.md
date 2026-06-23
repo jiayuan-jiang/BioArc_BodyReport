@@ -29,17 +29,20 @@ Format: `[priority] Task title — spec pointer`
   Currently photos are previewed only; need to POST binary files to KoboToolbox attachment API alongside the submission.
   → no spec yet (straightforward — document endpoint and implement)
 
-- [ ] **[MEDIUM] Open-Meteo date edge case**
-  Archive API returns empty if date is today. Detect and switch to forecast endpoint for today/future dates.
-  → `src/utils/environmentApi.js` — small fix, no separate spec needed
+- [ ] **[PENDING CLIENT] Open-Meteo 未来日期问题**
+  Step 3 的天气拉取使用 archive API（历史存档），若用户将采集日期设为未来日期则 API 返回 400 报错，天气数据显示 `—`。
+  目前 Step 3 在进入时立即拉取，而 collectionDate 在 Step 4 才可修改，故当前流程下不会触发此问题。
+  若日后允许用户在 Step 3 之前修改日期，或业务上存在预填未来采集计划的场景，则需切换到 forecast API（`https://api.open-meteo.com/v1/forecast`）处理未来日期。
+  → 待与客户确认是否有预填未来日期的需求后决定是否实现。
+  → `src/utils/environmentApi.js`
 
 - [ ] **[MEDIUM] Vercel deployment**
   Set env vars in Vercel dashboard, verify build passes, confirm submission flow works end-to-end.
   → no spec needed
 
-- [ ] **[LOW] Multi-language UI**
-  KoboToolbox form supports EN/ES/FR/PT. React app is English only.
-  Pending decision on whether this is needed for demo.
+- [x] **[LOW] Multi-language UI**
+  EN/ES/FR/PT implemented via LangContext + useT() hook (no external deps).
+  Language switcher pill in top-right header. Form stored values remain English.
 
 - [ ] **[LOW] Offline support / local queue**
   Service worker to queue submissions when network is unavailable.

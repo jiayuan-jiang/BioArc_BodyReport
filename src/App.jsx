@@ -1,18 +1,12 @@
 import { useState } from 'react'
+import { LangProvider, useT } from './i18n'
 import ProgressBar from './components/ProgressBar'
+import LanguageSwitcher from './components/LanguageSwitcher'
 import Step1Specimen from './steps/Step1Specimen'
 import Step2Location from './steps/Step2Location'
 import Step3Environment from './steps/Step3Environment'
 import Step4Collection from './steps/Step4Collection'
 import Step5Review from './steps/Step5Review'
-
-const STEPS = [
-  { id: 1, label: 'Specimen' },
-  { id: 2, label: 'Location' },
-  { id: 3, label: 'Environment' },
-  { id: 4, label: 'Collection' },
-  { id: 5, label: 'Review' },
-]
 
 const initialForm = {
   species: '',
@@ -38,14 +32,22 @@ const initialForm = {
   notes: '',
 }
 
-export default function App() {
+function AppInner() {
+  const { t } = useT()
   const [step, setStep] = useState(1)
   const [form, setForm] = useState(initialForm)
   const [submitted, setSubmitted] = useState(false)
   const [submissionId, setSubmissionId] = useState(null)
 
-  const update = (fields) => setForm(f => ({ ...f, ...fields }))
+  const STEPS = [
+    { id: 1, label: t('step_specimen') },
+    { id: 2, label: t('step_location') },
+    { id: 3, label: t('step_environment') },
+    { id: 4, label: t('step_collection') },
+    { id: 5, label: t('step_review') },
+  ]
 
+  const update = (fields) => setForm(f => ({ ...f, ...fields }))
   const next = () => setStep(s => Math.min(s + 1, 5))
   const back = () => setStep(s => Math.max(s - 1, 1))
 
@@ -72,7 +74,8 @@ export default function App() {
           </svg>
         </div>
         <span className="app-title">BioARC</span>
-        <span className="app-subtitle">Specimen Collection Survey</span>
+        <span className="app-subtitle">{t('subtitle')}</span>
+        <LanguageSwitcher />
       </header>
 
       <main className="app-main">
@@ -88,13 +91,13 @@ export default function App() {
                   <path d="M20 6L9 17l-5-5" />
                 </svg>
               </div>
-              <h2>Submission Complete</h2>
-              <p>Your specimen record has been archived successfully in KoboToolbox.</p>
+              <h2>{t('success_title')}</h2>
+              <p>{t('success_body')}</p>
               {submissionId && (
                 <span className="success-id">ID: {submissionId}</span>
               )}
               <button className="btn btn-primary" onClick={handleReset} style={{ marginTop: 8 }}>
-                Submit Another Record
+                {t('success_another')}
               </button>
             </div>
           </div>
@@ -111,5 +114,13 @@ export default function App() {
         )}
       </main>
     </div>
+  )
+}
+
+export default function App() {
+  return (
+    <LangProvider>
+      <AppInner />
+    </LangProvider>
   )
 }
