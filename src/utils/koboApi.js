@@ -1,47 +1,88 @@
-const BASE_URL  = import.meta.env.VITE_KOBO_BASE_URL
-const API_KEY   = import.meta.env.VITE_KOBO_API_KEY
 const ASSET_UID = import.meta.env.VITE_KOBO_ASSET_UID
 
-export async function submitToKobo(form) {
-  const payload = {
-    species:              form.species,
-    preservation_method:  form.preservation,
-    location_latitude:    form.latitude,
-    location_longitude:   form.longitude,
-    location_altitude:    form.altitude || null,
-    location_accuracy:    form.accuracy || null,
-    locality:             form.locality || null,
-    dem_elevation_m:      form.elevation,
-    land_cover_lucc:      form.landCover,
-    weather_temperature:  form.temperature,
-    weather_precipitation:form.precipitation,
-    weather_wind_speed:   form.windSpeed,
-    weather_code:         form.weatherCode,
-    collection_date:      form.collectionDate,
-    collector_name:       form.collectorName,
-    institution:          form.institution || null,
-    project_name:         form.projectName || null,
-    habitat_description:  form.habitatDescription || null,
-    additional_notes:     form.notes || null,
-  }
+const PRESERVATION_MAP = {
+  frozen:  'freeze',
+  alcohol: 'alcohol',
+  dried:   'dry',
+}
 
-  const res = await fetch(
-    `${BASE_URL}/api/v2/assets/${ASSET_UID}/submissions/`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Token ${API_KEY}`,
-        'Content-Type':  'application/json',
-      },
-      body: JSON.stringify(payload),
-    }
+function escapeXml(value) {
+  return String(value)
+    .replace(/&/g,  '&amp;')
+    .replace(/</g,  '&lt;')
+    .replace(/>/g,  '&gt;')
+    .replace(/"/g,  '&quot;')
+    .replace(/'/g,  '&apos;')
+}
+
+function field(name, value) {
+  if (value === null || value === undefined || value === '') return ''
+  return `<${name}>${escapeXml(value)}</${name}>`
+}
+
+function buildGeopoint(form) {
+  if (!form.latitude || !form.longitude) return ''
+  const parts = [form.latitude, form.longitude]
+  if (form.altitude) {
+    parts.push(form.altitude)
+    if (form.accuracy) parts.push(form.accuracy)
+  }
+  return parts.join(' ')
+}
+
+function buildSubmissionXml(form, instanceId) {
+  const photo = form.photos?.[0]
+
+  return `<?xml version='1.0' ?>
+<data id="${ASSET_UID}">
+  ${field('species', form.species)}
+  ${field('preservation_method', PRESERVATION_MAP[form.preservation] ?? form.preservation)}
+  ${photo ? `<survey_image>${escapeXml(photo.name)}</survey_image>` : ''}
+  ${field('location', buildGeopoint(form))}
+  ${field('dem_elevation_m', form.elevation)}
+  ${field('land_cover_lucc', form.landCover)}
+  ${field('weather_temperature', form.temperature)}
+  ${field('weather_precipitation', form.precipitation)}
+  ${field('weather_wind_speed', form.windSpeed)}
+  ${field('weather_code', form.weatherCode)}
+  ${field('collection_date', form.collectionDate)}
+  ${field('collector_name', form.collectorName)}
+  ${field('institution', form.institution)}
+  ${field('project_name', form.projectName)}
+  ${field('habitat_description', form.habitatDescription)}
+  ${field('locality', form.locality)}
+  ${field('notes', form.notes)}
+  <meta>
+    <instanceID>uuid:${instanceId}</instanceID>
+  </meta>
+</data>`
+}
+
+export async function submitToKobo(form) {
+  const instanceId = crypto.randomUUID()
+  const xml = buildSubmissionXml(form, instanceId)
+
+  const body = new FormData()
+  body.append(
+    'xml_submission_file',
+    new Blob([xml], { type: 'text/xml' }),
+    'submission.xml'
   )
 
-  if (!res.ok) {
-    const body = await res.text()
-    throw new Error(`KoboToolbox error ${res.status}: ${body}`)
+  const photo = form.photos?.[0]
+  if (photo) {
+    body.append(photo.name, photo.file, photo.name)
   }
 
-  const data = await res.json()
-  return data?.id ?? data?.submission_id ?? 'submitted'
+  const res = await fetch('/api/kobo-submit', {
+    method: 'POST',
+    body,
+  })
+
+  if (!res.ok) {
+    const responseText = await res.text()
+    throw new Error(`KoboToolbox error ${res.status}: ${responseText}`)
+  }
+
+  return instanceId
 }

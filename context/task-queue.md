@@ -1,5 +1,5 @@
 # Task Queue
-_Last updated: 2026-06-16_
+_Last updated: 2026-07-17_
 
 Format: `[priority] Task title — spec pointer`
 
@@ -9,6 +9,10 @@ Format: `[priority] Task title — spec pointer`
 
 - [ ] **[HIGH] Species search — iNaturalist API live autocomplete**
   Replace static species list in `Step1Specimen.jsx` with real-time search against iNaturalist Taxa API.
+  Confirmed 2026-07-17: the current hardcoded list is North American wildlife with slug ids
+  (e.g. `procyon_lotor`), completely disjoint from the Kobo form's `species` choices (scientific names
+  like `Panthera onca`). Submissions go through fine but write a species value Kobo doesn't recognize —
+  this is the main reason the value needs fixing, not just staleness.
   → `spec/species-api.md`
 
 ---
@@ -25,10 +29,6 @@ Format: `[priority] Task title — spec pointer`
   → `spec/dashboard.md`
 
 ### Ready to develop
-- [ ] **[HIGH] Photo upload to KoboToolbox media endpoint**
-  Currently photos are previewed only; need to POST binary files to KoboToolbox attachment API alongside the submission.
-  → no spec yet (straightforward — document endpoint and implement)
-
 - [ ] **[PENDING CLIENT] Open-Meteo 未来日期问题**
   Step 3 的天气拉取使用 archive API（历史存档），若用户将采集日期设为未来日期则 API 返回 400 报错，天气数据显示 `—`。
   目前 Step 3 在进入时立即拉取，而 collectionDate 在 Step 4 才可修改，故当前流程下不会触发此问题。
@@ -43,6 +43,18 @@ Format: `[priority] Task title — spec pointer`
 - [x] **[LOW] Multi-language UI**
   EN/ES/FR/PT implemented via LangContext + useT() hook (no external deps).
   Language switcher pill in top-right header. Form stored values remain English.
+
+- [x] **[HIGH] Fix KoboToolbox submission (submit button did nothing)** — 2026-07-17
+  Root cause: `koboApi.js` POSTed JSON to a REST endpoint that doesn't support creating submissions, and
+  even fixed would've hit a hard CORS block calling Kobo directly from the browser. Fixed by rewriting to
+  the OpenRosa XML protocol behind a new Vercel proxy (`api/kobo-submit.js`), adding the missing
+  environment fields to the deployed Kobo form, and moving the API key to server-only env vars.
+  Verified via full Playwright click-through + inspecting the landed Kobo record. Full detail in
+  `context/state.md` and `memory/sessions/2026-07-17.md`.
+
+- [x] **[HIGH] Photo upload to KoboToolbox media endpoint**
+  Photos now attach to the submission as a real OpenRosa multipart file part (was: preview-only).
+  Only the first photo attaches — `survey_image` is a single `image` field, not a repeat group.
 
 - [ ] **[LOW] Offline support / local queue**
   Service worker to queue submissions when network is unavailable.

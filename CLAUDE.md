@@ -43,7 +43,9 @@ src/
   components/ProgressBar   ← step progress indicator
   utils/
     environmentApi.js      ← Open-Elevation, Open-Meteo, ESA WorldCover
-    koboApi.js             ← KoboToolbox v2 submission
+    koboApi.js             ← builds the OpenRosa XML submission, POSTs to /api/kobo-submit
+api/
+  kobo-submit.js           ← Vercel serverless proxy: forwards submission to KoboToolbox, holds the API key server-side
 ```
 
 ---
@@ -54,6 +56,7 @@ src/
 - **No new dependencies without noting in state.md** — keep bundle small
 - **KoboToolbox field names are snake_case** — match exactly what's in the KoboToolbox form
 - **Never commit `.env`** — use `.env.example` for reference
-- **API Key is in VITE_ prefix** — required for Vite to expose env vars to frontend
-- **Species stored as scientific name + taxon_id** — common name is display-only
+- **KoboToolbox submission goes through `/api/kobo-submit`, never straight from the browser** — Kobo's OpenRosa endpoint sends no CORS headers, so a direct browser `fetch` to `kf.kobotoolbox.org` always fails. The Vercel function in `api/kobo-submit.js` is a same-origin proxy that also keeps the API token server-side.
+- **Only `VITE_KOBO_ASSET_UID` is client-exposed** — `KOBO_API_KEY` / `KOBO_BASE_URL` / `KOBO_OWNER_USERNAME` are server-only env vars (no `VITE_` prefix) read by `api/kobo-submit.js`; set them in the Vercel dashboard, not just `.env`
+- **Species stored as scientific name + taxon_id** — common name is display-only. Not yet true in practice: `Step1Specimen.jsx` still uses a hardcoded placeholder species list unrelated to the Kobo form's `species` choices (tracked in task-queue.md)
 
