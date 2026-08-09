@@ -9,7 +9,10 @@ import Step4Collection from './steps/Step4Collection'
 import Step5Review from './steps/Step5Review'
 
 const initialForm = {
-  species: '',
+  taxonId: null,
+  speciesSci: '',
+  speciesCommon: '',
+  speciesIconic: '',
   speciesDisplay: '',
   preservation: '',
   photos: [],

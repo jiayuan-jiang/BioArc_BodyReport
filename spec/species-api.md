@@ -1,6 +1,13 @@
-# Spec: Species Search — iNaturalist API Autocomplete
-_Status: ready to implement_
-_Affects: `src/steps/Step1Specimen.jsx`_
+# Spec: Species Search. iNaturalist API Autocomplete
+_Status: implemented (2026-08-09), on branch `feature/species-live-search`, not yet merged_
+_Affects: `src/steps/Step1Specimen.jsx`, `src/utils/koboApi.js`, `src/i18n/index.jsx`, `src/App.jsx`, `src/index.css`_
+
+Considered self-hosting a search index built from iNaturalist's official taxonomy export instead of calling
+their live API. Ruled out after checking the actual export (`taxa.csv.gz`, 37.7MB compressed, 189MB
+uncompressed, 1.65M rows): it has no common/vernacular names at all, only scientific name plus a numeric
+ancestry chain, which would have broken common-name and multilingual search entirely. The live API's real
+latency (five sample queries, English and non-English) measured 190 to 300ms, well inside this spec's
+existing 300ms debounce, removing the other reason to self-host. Implemented as originally specced below.
 
 ---
 
@@ -97,9 +104,11 @@ Implement inline with `useRef` + `setTimeout` — no library needed.
 
 ## Files to change
 
-| File | Change |
-|------|--------|
-| `src/steps/Step1Specimen.jsx` | Replace `SPECIES` constant + dropdown logic with API fetch |
-| `src/utils/koboApi.js` | Update payload: `species` → `species_scientific` + `species_common` + `species_taxon_id` |
-| `context/state.md` | Mark task complete after implementation |
-| `context/task-queue.md` | Move to Done |
+| File | Change | Status |
+|------|--------|--------|
+| `src/steps/Step1Specimen.jsx` | Replace `SPECIES` constant + dropdown logic with API fetch | Done |
+| `src/utils/koboApi.js` | Update payload: `species` to `species_scientific` + `species_common` + `species_taxon_id` | Done |
+| Kobo deployed form | `species` field changed from a closed 8-choice `select_one` to the three fields above (text/text/integer) via the API | Done |
+| `src/i18n/index.jsx` | Added `s1_species_no_results` / `s1_species_fetch_err` in all 4 languages | Done |
+| `context/state.md` | Mark task complete after implementation | Done |
+| `context/task-queue.md` | Move to Done | Done |
