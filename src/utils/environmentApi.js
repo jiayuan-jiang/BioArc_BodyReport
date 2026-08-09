@@ -13,28 +13,97 @@ export async function fetchElevation(lat, lng) {
   return data.results?.[0]?.elevation ?? null
 }
 
-export async function fetchWeather(lat, lng, date) {
-  const url = new URL('https://archive-api.open-meteo.com/v1/archive')
+const DAILY_VARS = [
+  'temperature_2m_max', 'relative_humidity_2m_mean', 'precipitation_sum',
+  'windspeed_10m_max', 'weathercode',
+  'soil_temperature_0_to_7cm_mean', 'soil_moisture_0_to_7cm_mean',
+].join(',')
+
+const CURRENT_VARS = [
+  'temperature_2m', 'relative_humidity_2m', 'precipitation',
+  'wind_speed_10m', 'weather_code',
+  'soil_temperature_0cm', 'soil_moisture_0_to_1cm',
+].join(',')
+
+function isToday(date) {
+  return date === new Date().toISOString().split('T')[0]
+}
+
+async function fetchCurrentWeather(lat, lng) {
+  const url = new URL('https://api.open-meteo.com/v1/forecast')
+  url.searchParams.set('latitude', lat)
+  url.searchParams.set('longitude', lng)
+  url.searchParams.set('current', CURRENT_VARS)
+  url.searchParams.set('timezone', 'auto')
+
+  const res = await fetch(url)
+  if (!res.ok) return null
+  const data = await res.json()
+
+  const c = data.current
+  if (!c || c.temperature_2m == null) return null
+
+  return {
+    temperature:     c.temperature_2m        ?? null,
+    humidity:        c.relative_humidity_2m  ?? null,
+    precipitation:   c.precipitation         ?? null,
+    windSpeed:       c.wind_speed_10m        ?? null,
+    weatherCode:     c.weather_code          ?? null,
+    soilTemperature: c.soil_temperature_0cm  ?? null,
+    soilMoisture:    c.soil_moisture_0_to_1cm ?? null,
+    source: 'current',
+  }
+}
+
+async function fetchDailyWeatherFrom(base, lat, lng, date) {
+  const url = new URL(base)
   url.searchParams.set('latitude', lat)
   url.searchParams.set('longitude', lng)
   url.searchParams.set('start_date', date)
   url.searchParams.set('end_date', date)
-  url.searchParams.set('daily', 'temperature_2m_max,precipitation_sum,windspeed_10m_max,weathercode')
+  url.searchParams.set('daily', DAILY_VARS)
   url.searchParams.set('timezone', 'auto')
 
   const res = await fetch(url)
-  if (!res.ok) throw new Error('Weather fetch failed')
+  if (!res.ok) return null
   const data = await res.json()
 
   const d = data.daily
-  if (!d) throw new Error('No weather data')
+  if (!d || d.temperature_2m_max?.[0] == null) return null
 
   return {
-    temperature:   d.temperature_2m_max?.[0]   ?? null,
-    precipitation: d.precipitation_sum?.[0]     ?? null,
-    windSpeed:     d.windspeed_10m_max?.[0]     ?? null,
-    weatherCode:   d.weathercode?.[0]           ?? null,
+    temperature:     d.temperature_2m_max?.[0]              ?? null,
+    humidity:        d.relative_humidity_2m_mean?.[0]        ?? null,
+    precipitation:   d.precipitation_sum?.[0]                 ?? null,
+    windSpeed:       d.windspeed_10m_max?.[0]                 ?? null,
+    weatherCode:     d.weathercode?.[0]                       ?? null,
+    soilTemperature: d.soil_temperature_0_to_7cm_mean?.[0]    ?? null,
+    soilMoisture:    d.soil_moisture_0_to_7cm_mean?.[0]       ?? null,
+    source: 'daily',
   }
+}
+
+export async function fetchWeather(lat, lng, date) {
+  // "Today" is the common case (collectionDate defaults to today) and is most
+  // likely a live field submission — use the real-time `current` endpoint
+  // (~15 min resolution) instead of a same-day daily aggregate.
+  if (isToday(date)) {
+    const current = await fetchCurrentWeather(lat, lng)
+    if (current) return current
+  }
+
+  // ERA5 reanalysis (archive) has a ~2-7 day processing lag and is the only
+  // source with full historical depth + soil variables. Forecast(daily) is the
+  // fallback for recent dates archive hasn't processed yet — note Open-Meteo
+  // doesn't expose daily soil aggregates on the forecast endpoint, so soil
+  // fields may still come back null in that specific fallback case.
+  const archive = await fetchDailyWeatherFrom('https://archive-api.open-meteo.com/v1/archive', lat, lng, date)
+  if (archive) return archive
+
+  const forecast = await fetchDailyWeatherFrom('https://api.open-meteo.com/v1/forecast', lat, lng, date)
+  if (forecast) return forecast
+
+  throw new Error('No weather data')
 }
 
 export async function fetchLandCover(lat, lng) {

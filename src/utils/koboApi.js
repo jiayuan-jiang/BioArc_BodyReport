@@ -32,9 +32,12 @@ function buildGeopoint(form) {
 
 function buildSubmissionXml(form, instanceId) {
   const photo = form.photos?.[0]
+  const manualFields = (form.manualEnvFields ?? []).join(',')
+  const fetchedSnapshot = form.envFetchedSnapshot ? JSON.stringify(form.envFetchedSnapshot) : null
 
   return `<?xml version='1.0' ?>
 <data id="${ASSET_UID}">
+  ${field('record_number', form.recordNumber)}
   ${field('species', form.species)}
   ${field('preservation_method', PRESERVATION_MAP[form.preservation] ?? form.preservation)}
   ${photo ? `<survey_image>${escapeXml(photo.name)}</survey_image>` : ''}
@@ -42,9 +45,14 @@ function buildSubmissionXml(form, instanceId) {
   ${field('dem_elevation_m', form.elevation)}
   ${field('land_cover_lucc', form.landCover)}
   ${field('weather_temperature', form.temperature)}
+  ${field('weather_humidity', form.humidity)}
   ${field('weather_precipitation', form.precipitation)}
   ${field('weather_wind_speed', form.windSpeed)}
   ${field('weather_code', form.weatherCode)}
+  ${field('soil_temperature', form.soilTemperature)}
+  ${field('soil_moisture', form.soilMoisture)}
+  ${field('env_manual_fields', manualFields)}
+  ${field('env_fetched_snapshot', fetchedSnapshot)}
   ${field('collection_date', form.collectionDate)}
   ${field('collector_name', form.collectorName)}
   ${field('institution', form.institution)}
@@ -52,6 +60,7 @@ function buildSubmissionXml(form, instanceId) {
   ${field('habitat_description', form.habitatDescription)}
   ${field('locality', form.locality)}
   ${field('notes', form.notes)}
+  ${field('submitted_at', new Date().toISOString())}
   <meta>
     <instanceID>uuid:${instanceId}</instanceID>
   </meta>

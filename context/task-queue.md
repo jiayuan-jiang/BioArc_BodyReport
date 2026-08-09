@@ -29,12 +29,12 @@ Format: `[priority] Task title — spec pointer`
   → `spec/dashboard.md`
 
 ### Ready to develop
-- [ ] **[PENDING CLIENT] Open-Meteo 未来日期问题**
-  Step 3 的天气拉取使用 archive API（历史存档），若用户将采集日期设为未来日期则 API 返回 400 报错，天气数据显示 `—`。
-  目前 Step 3 在进入时立即拉取，而 collectionDate 在 Step 4 才可修改，故当前流程下不会触发此问题。
-  若日后允许用户在 Step 3 之前修改日期，或业务上存在预填未来采集计划的场景，则需切换到 forecast API（`https://api.open-meteo.com/v1/forecast`）处理未来日期。
-  → 待与客户确认是否有预填未来日期的需求后决定是否实现。
-  → `src/utils/environmentApi.js`
+- [x] **[HIGH] Open-Meteo 天气获取重写：real-time + humidity + soil temp/moisture** — 2026-08-09
+  原问题（archive API 查未来/近期日期返回空值）已通过重写 `fetchWeather()` 解决：collectionDate 为今天时走
+  `/v1/forecast?current=...`（准实时，~15分钟粒度），过去日期走 archive（ERA5，全历史但2-7天延迟）→
+  forecast daily（无延迟但仅约92天）fallback链。同时新增 humidity、soil_temperature、soil_moisture 三个字段，
+  已贯穿 UI（Step3/Step5）、i18n（4语言）、koboApi.js、Kobo部署表单schema（已用真实提交测试验证并删除测试记录）。
+  → `src/utils/environmentApi.js`, `context/state.md`
 
 - [ ] **[MEDIUM] Vercel deployment**
   Set env vars in Vercel dashboard, verify build passes, confirm submission flow works end-to-end.

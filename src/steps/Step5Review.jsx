@@ -99,13 +99,17 @@ export default function Step5Review({ form, onBack, onSuccess }) {
           <Row label={t('s5_row_elevation')}    value={form.elevation    != null ? `${form.elevation} m`       : null} />
           <Row label={t('s5_row_landcover')}    value={form.landCover} />
           <Row label={t('s5_row_temperature')}  value={form.temperature  != null ? `${form.temperature} °C`    : null} />
+          <Row label={t('s5_row_humidity')}     value={form.humidity     != null ? `${form.humidity}%`         : null} />
           <Row label={t('s5_row_precipitation')}value={form.precipitation!= null ? `${form.precipitation} mm`  : null} />
           <Row label={t('s5_row_wind')}         value={form.windSpeed    != null ? `${form.windSpeed} km/h`    : null} />
           <Row label={t('s5_row_weather')}      value={weatherLabel} />
+          <Row label={t('s5_row_soil_temp')}     value={form.soilTemperature != null ? `${form.soilTemperature} °C`     : null} />
+          <Row label={t('s5_row_soil_moisture')} value={form.soilMoisture    != null ? `${form.soilMoisture} m³/m³`     : null} />
         </Section>
 
         <Section title={t('s5_sec_coll')}>
           <Row label={t('s5_row_date')}        value={form.collectionDate} />
+          <Row label={t('s5_row_record_number')} value={form.recordNumber} />
           <Row label={t('s5_row_collector')}   value={form.collectorName} />
           <Row label={t('s5_row_institution')} value={form.institution} />
           <Row label={t('s5_row_project')}     value={form.projectName} />

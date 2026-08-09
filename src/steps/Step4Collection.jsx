@@ -48,6 +48,17 @@ export default function Step4Collection({ form, update, onNext, onBack }) {
           </div>
 
           <div className="field">
+            <label className="field-label">{t('s4_record_number')}</label>
+            <input
+              type="text"
+              placeholder={t('s4_record_number_ph')}
+              value={form.recordNumber}
+              onChange={e => update({ recordNumber: e.target.value })}
+            />
+            <span className="field-hint">{t('s4_record_number_hint')}</span>
+          </div>
+
+          <div className="field">
             <label className="field-label field-required">{t('s4_collector')}</label>
             <input
               type="text"

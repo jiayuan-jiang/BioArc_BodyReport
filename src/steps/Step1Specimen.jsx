@@ -26,6 +26,25 @@ const SPECIES = [
   { id: 'unknown',               common: 'Unknown / Other',      sci: '' },
 ]
 
+// Resizes to a max 1280px edge and re-encodes as JPEG @ 75% quality — visibly
+// sharp on screen but a fraction of a raw phone photo's size, since Kobo's free
+// storage tier is the actual bottleneck (1GB, not the 5000/month submission cap).
+async function compressImage(file, maxDim = 1280, quality = 0.75) {
+  const bitmap = await createImageBitmap(file)
+  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height))
+  const w = Math.round(bitmap.width * scale)
+  const h = Math.round(bitmap.height * scale)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h)
+
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality))
+  const name = file.name.replace(/\.[^.]+$/, '') + '.jpg'
+  return new File([blob], name, { type: 'image/jpeg' })
+}
+
 export default function Step1Specimen({ form, update, onNext }) {
   const { t } = useT()
   const [query, setQuery]       = useState(form.speciesDisplay || '')
@@ -53,9 +72,10 @@ export default function Step1Specimen({ form, update, onNext }) {
     setOpen(false)
   }
 
-  const handleFiles = (files) => {
+  const handleFiles = async (files) => {
     const valid = Array.from(files).filter(f => f.type.startsWith('image/'))
-    const previews = valid.map(f => ({ file: f, url: URL.createObjectURL(f), name: f.name }))
+    const compressed = await Promise.all(valid.map(compressImage))
+    const previews = compressed.map(f => ({ file: f, url: URL.createObjectURL(f), name: f.name }))
     update({ photos: [...form.photos, ...previews] })
   }
 
@@ -68,7 +88,6 @@ export default function Step1Specimen({ form, update, onNext }) {
     const e = {}
     if (!form.species)      e.species = t('s1_err_species')
     if (!form.preservation) e.preservation = t('s1_err_preservation')
-    if (form.photos.length === 0) e.photos = t('s1_err_photos')
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -144,7 +163,7 @@ export default function Step1Specimen({ form, update, onNext }) {
 
         {/* Photos */}
         <div className="field">
-          <label className="field-label field-required">{t('s1_photos')}</label>
+          <label className="field-label">{t('s1_photos')}</label>
           <div
             className={`photo-dropzone ${dragging ? 'dragging' : ''}`}
             onClick={() => fileRef.current.click()}
@@ -163,7 +182,6 @@ export default function Step1Specimen({ form, update, onNext }) {
             <p>{t('s1_drop_hint')}</p>
             <input ref={fileRef} type="file" accept="image/*" multiple onChange={e => handleFiles(e.target.files)} />
           </div>
-          {errors.photos && <span className="field-error">{errors.photos}</span>}
           {form.photos.length > 0 && (
             <div className="photo-thumbnails" style={{ marginTop: 8 }}>
               {form.photos.map((p, i) => (

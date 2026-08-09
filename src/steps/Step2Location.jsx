@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useT } from '../i18n'
@@ -16,13 +16,26 @@ function MapClickHandler({ onMapClick }) {
   return null
 }
 
+// Leaflet's `center` prop only applies on initial mount, not on updates — this
+// imperatively re-centers the already-mounted map whenever the coordinate
+// fields change (e.g. typed by hand), instead of only on map clicks/GPS.
+function RecenterMap({ position }) {
+  const map = useMap()
+  useEffect(() => {
+    if (position) map.setView(position, 13)
+  }, [position ? position[0] : null, position ? position[1] : null])
+  return null
+}
+
 export default function Step2Location({ form, update, onNext, onBack }) {
   const { t } = useT()
   const [locating, setLocating] = useState(false)
   const [errors, setErrors]     = useState({})
 
-  const position = form.latitude && form.longitude
-    ? [parseFloat(form.latitude), parseFloat(form.longitude)]
+  const parsedLat = parseFloat(form.latitude)
+  const parsedLng = parseFloat(form.longitude)
+  const position = Number.isFinite(parsedLat) && Number.isFinite(parsedLng)
+    ? [parsedLat, parsedLng]
     : null
 
   const handleMapClick = ({ lat, lng }) => {
@@ -105,13 +118,13 @@ export default function Step2Location({ form, update, onNext, onBack }) {
             center={defaultCenter}
             zoom={position ? 13 : 4}
             style={{ height: '100%', width: '100%' }}
-            key={position ? 'has-pos' : 'no-pos'}
           >
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
             <MapClickHandler onMapClick={handleMapClick} />
+            <RecenterMap position={position} />
             {position && <Marker position={position} />}
           </MapContainer>
         </div>
