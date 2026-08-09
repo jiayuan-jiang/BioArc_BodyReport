@@ -52,11 +52,12 @@ api/
 
 ## Development Rules
 
-- **Card UI spec is the source of truth** — all new components follow `design/ui-card-spec.md`
-- **No new dependencies without noting in state.md** — keep bundle small
-- **KoboToolbox field names are snake_case** — match exactly what's in the KoboToolbox form
-- **Never commit `.env`** — use `.env.example` for reference
-- **KoboToolbox submission goes through `/api/kobo-submit`, never straight from the browser** — Kobo's OpenRosa endpoint sends no CORS headers, so a direct browser `fetch` to `kf.kobotoolbox.org` always fails. The Vercel function in `api/kobo-submit.js` is a same-origin proxy that also keeps the API token server-side.
-- **Only `VITE_KOBO_ASSET_UID` is client-exposed** — `KOBO_API_KEY` / `KOBO_BASE_URL` / `KOBO_OWNER_USERNAME` are server-only env vars (no `VITE_` prefix) read by `api/kobo-submit.js`; set them in the Vercel dashboard, not just `.env`
-- **Species stored as scientific name + taxon_id** — common name is display-only. Not yet true in practice: `Step1Specimen.jsx` still uses a hardcoded placeholder species list unrelated to the Kobo form's `species` choices (tracked in task-queue.md)
+- **Card UI spec is the source of truth.** All new components follow `design/ui-card-spec.md`.
+- **No new dependencies without noting in state.md.** Keep the bundle small.
+- **KoboToolbox field names are snake_case.** Match exactly what's in the KoboToolbox form.
+- **Never commit `.env`.** Use `.env.example` for reference.
+- **KoboToolbox submission goes through `/api/kobo-submit`, never straight from the browser.** Kobo's OpenRosa endpoint sends no CORS headers, so a direct browser `fetch` to `kf.kobotoolbox.org` always fails. The Vercel function in `api/kobo-submit.js` is a same-origin proxy that also keeps the API token server-side.
+- **Only `VITE_KOBO_ASSET_UID` is client-exposed.** `KOBO_API_KEY` / `KOBO_BASE_URL` / `KOBO_OWNER_USERNAME` are server-only env vars (no `VITE_` prefix) read by `api/kobo-submit.js`; set them in the Vercel dashboard, not just `.env`.
+- **Species stored as scientific name + taxon_id; common name is display-only.** Not yet true in practice: `Step1Specimen.jsx` still uses a hardcoded placeholder species list unrelated to the Kobo form's `species` choices (tracked in task-queue.md).
+- **Avoid dashes (em-dash "—" or hyphen "-") as a sentence connector.** Applies to code comments, UI copy/i18n strings, commit messages, and docs, in every language (Chinese included). It reads as an obvious AI writing tell. Use a period, colon, or a separate sentence instead.
 
