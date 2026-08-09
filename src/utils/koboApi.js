@@ -35,7 +35,9 @@ function buildSubmissionXml(form, instanceId) {
 
   return `<?xml version='1.0' ?>
 <data id="${ASSET_UID}">
-  ${field('species', form.species)}
+  ${field('species_scientific', form.speciesSci)}
+  ${field('species_common', form.speciesCommon)}
+  ${field('species_taxon_id', form.taxonId)}
   ${field('preservation_method', PRESERVATION_MAP[form.preservation] ?? form.preservation)}
   ${photo ? `<survey_image>${escapeXml(photo.name)}</survey_image>` : ''}
   ${field('location', buildGeopoint(form))}

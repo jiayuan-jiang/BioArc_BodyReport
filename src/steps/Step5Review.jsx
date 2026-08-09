@@ -83,7 +83,14 @@ export default function Step5Review({ form, onBack, onSuccess }) {
         )}
 
         <Section title={t('s5_sec_specimen')}>
-          <Row label={t('s5_row_species')}      value={form.speciesDisplay} />
+          <Row
+            label={t('s5_row_species')}
+            value={
+              form.speciesCommon && form.speciesSci && form.speciesCommon !== form.speciesSci
+                ? `${form.speciesCommon} (${form.speciesSci})`
+                : form.speciesDisplay
+            }
+          />
           <Row label={t('s5_row_preservation')} value={preservationLabel} />
         </Section>
 

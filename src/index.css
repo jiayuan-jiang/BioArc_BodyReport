@@ -275,6 +275,13 @@ html, body, #root {
   margin-top: 2px;
 }
 
+.field-warning {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
 input[type="text"],
 input[type="date"],
 input[type="number"],
@@ -498,6 +505,9 @@ input.error, textarea.error, select.error {
 }
 
 .species-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 10px 14px;
   font-size: 14px;
   cursor: pointer;
@@ -507,11 +517,48 @@ input.error, textarea.error, select.error {
 
 .species-option:hover, .species-option.active { background: var(--green-light); }
 
+.species-option-empty {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.species-option-empty:hover { background: none; }
+
+.species-option-photo {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.species-option-text {
+  flex: 1;
+  min-width: 0;
+}
+
 .species-option-sci {
   font-size: 12px;
   color: var(--text-muted);
   font-style: italic;
   display: block;
+}
+
+.species-option-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--green-primary);
+  background: var(--green-light);
+  padding: 2px 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.species-search-spinner {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 /* ── Map ── */

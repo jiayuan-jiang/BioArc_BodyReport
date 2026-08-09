@@ -1,19 +1,13 @@
 # Task Queue
-_Last updated: 2026-07-17_
+_Last updated: 2026-08-09_
 
-Format: `[priority] Task title — spec pointer`
+Format: `[priority] Task title. Spec pointer`
 
 ---
 
 ## In Progress
 
-- [ ] **[HIGH] Species search — iNaturalist API live autocomplete**
-  Replace static species list in `Step1Specimen.jsx` with real-time search against iNaturalist Taxa API.
-  Confirmed 2026-07-17: the current hardcoded list is North American wildlife with slug ids
-  (e.g. `procyon_lotor`), completely disjoint from the Kobo form's `species` choices (scientific names
-  like `Panthera onca`). Submissions go through fine but write a species value Kobo doesn't recognize —
-  this is the main reason the value needs fixing, not just staleness.
-  → `spec/species-api.md`
+(none)
 
 ---
 
@@ -63,6 +57,28 @@ Format: `[priority] Task title — spec pointer`
 ---
 
 ## Done
+
+- [x] **[HIGH] Species search. iNaturalist API live autocomplete** (2026-08-09)
+  Replaced the hardcoded North American wildlife list in `Step1Specimen.jsx` with real-time search against
+  the iNaturalist Taxa Autocomplete API (300ms debounce, photo + common name + scientific name + iconic
+  taxon badge in the dropdown, no-results and fetch-failure states per spec). Form state now stores
+  `taxonId`, `speciesSci`, `speciesCommon`, `speciesIconic` instead of a slug id.
+  Considered building a self-hosted search index from iNaturalist's official open-data taxonomy export
+  first (`taxa.csv.gz`, confirmed 37.7MB compressed / 189MB uncompressed / 1.65M rows via a live HEAD/download
+  check). Ruled out: that export has no common/vernacular names at all, only scientific name plus an
+  ancestry ID chain, which would have broken the core "search by common name in any language" requirement.
+  Measured the live API's real latency instead (five sample queries incl. non-English terms): 190 to 300ms,
+  well inside the existing 300ms debounce, so there is no responsiveness reason to self-host an index either.
+  Kept the original spec's real-time-API design as a result.
+  Also changed the live Kobo form's `species` field from a closed 8-choice `select_one` (Jaguar, Capybara,
+  Llama, Macaw, Piranha, Anaconda, Toucan, Tapir) to three fields, `species_scientific` (text),
+  `species_common` (text), `species_taxon_id` (integer), via `PATCH /api/v2/assets/{uid}/` +
+  `PATCH /api/v2/assets/{uid}/deployment/`, since the old choice list could never match an arbitrary
+  species coming from full-taxonomy search. `koboApi.js` updated to match. Verified with a real OpenRosa
+  test submission (Mallard / Anas platyrhynchos), confirmed all three fields landed via the REST API, then
+  deleted the test record.
+  Built in worktree `../BioArc-species-search` on branch `feature/species-live-search`, not yet merged.
+  → `spec/species-api.md`, `memory/sessions/2026-08-09.md`
 
 - [x] Vite + React project scaffold (package.json, vite.config.js, index.html)
 - [x] Global CSS design system (`src/index.css`)

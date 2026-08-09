@@ -1,38 +1,34 @@
 import { useState, useRef } from 'react'
 import { useT } from '../i18n'
 
-const SPECIES = [
-  { id: 'anas_platyrhynchos',    common: 'Mallard',              sci: 'Anas platyrhynchos' },
-  { id: 'branta_canadensis',     common: 'Canada Goose',         sci: 'Branta canadensis' },
-  { id: 'ardea_herodias',        common: 'Great Blue Heron',     sci: 'Ardea herodias' },
-  { id: 'buteo_jamaicensis',     common: 'Red-tailed Hawk',      sci: 'Buteo jamaicensis' },
-  { id: 'corvus_brachyrhynchos', common: 'American Crow',        sci: 'Corvus brachyrhynchos' },
-  { id: 'columba_livia',         common: 'Rock Pigeon',          sci: 'Columba livia' },
-  { id: 'turdus_migratorius',    common: 'American Robin',       sci: 'Turdus migratorius' },
-  { id: 'passer_domesticus',     common: 'House Sparrow',        sci: 'Passer domesticus' },
-  { id: 'sturnus_vulgaris',      common: 'European Starling',    sci: 'Sturnus vulgaris' },
-  { id: 'procyon_lotor',         common: 'Raccoon',              sci: 'Procyon lotor' },
-  { id: 'didelphis_virginiana',  common: 'Virginia Opossum',     sci: 'Didelphis virginiana' },
-  { id: 'sylvilagus_floridanus', common: 'Eastern Cottontail',   sci: 'Sylvilagus floridanus' },
-  { id: 'sciurus_carolinensis',  common: 'Eastern Gray Squirrel',sci: 'Sciurus carolinensis' },
-  { id: 'mephitis_mephitis',     common: 'Striped Skunk',        sci: 'Mephitis mephitis' },
-  { id: 'vulpes_vulpes',         common: 'Red Fox',              sci: 'Vulpes vulpes' },
-  { id: 'canis_latrans',         common: 'Coyote',               sci: 'Canis latrans' },
-  { id: 'odocoileus_virginianus',common: 'White-tailed Deer',    sci: 'Odocoileus virginianus' },
-  { id: 'terrapene_carolina',    common: 'Eastern Box Turtle',   sci: 'Terrapene carolina' },
-  { id: 'thamnophis_sirtalis',   common: 'Common Garter Snake',  sci: 'Thamnophis sirtalis' },
-  { id: 'rana_catesbeiana',      common: 'American Bullfrog',    sci: 'Rana catesbeiana' },
-  { id: 'ambystoma_maculatum',   common: 'Spotted Salamander',   sci: 'Ambystoma maculatum' },
-  { id: 'unknown',               common: 'Unknown / Other',      sci: '' },
-]
+const SPECIES_DEBOUNCE_MS = 300
+
+async function fetchSpeciesSuggestions(query, signal) {
+  const url = `https://api.inaturalist.org/v1/taxa/autocomplete?q=${encodeURIComponent(query)}&rank=species&per_page=10`
+  const res = await fetch(url, { signal })
+  if (!res.ok) throw new Error(`iNaturalist API error ${res.status}`)
+  const data = await res.json()
+  return (data.results || []).map(r => ({
+    taxonId: r.id,
+    sci: r.name,
+    common: r.preferred_common_name || r.name,
+    iconic: r.iconic_taxon_name || '',
+    photoUrl: r.default_photo?.square_url || null,
+  }))
+}
 
 export default function Step1Specimen({ form, update, onNext }) {
   const { t } = useT()
-  const [query, setQuery]       = useState(form.speciesDisplay || '')
-  const [open, setOpen]         = useState(false)
-  const [dragging, setDragging] = useState(false)
-  const [errors, setErrors]     = useState({})
-  const fileRef = useRef()
+  const [query, setQuery]           = useState(form.speciesDisplay || '')
+  const [results, setResults]       = useState([])
+  const [open, setOpen]             = useState(false)
+  const [loading, setLoading]       = useState(false)
+  const [fetchError, setFetchError] = useState(false)
+  const [dragging, setDragging]     = useState(false)
+  const [errors, setErrors]         = useState({})
+  const fileRef      = useRef()
+  const debounceRef  = useRef()
+  const abortRef     = useRef()
 
   const PRESERVATION = [
     { value: 'frozen',   label: t('s1_pres_frozen') },
@@ -40,15 +36,54 @@ export default function Step1Specimen({ form, update, onNext }) {
     { value: 'dried',    label: t('s1_pres_dried') },
   ]
 
-  const filtered = query.length > 0
-    ? SPECIES.filter(s =>
-        s.common.toLowerCase().includes(query.toLowerCase()) ||
-        s.sci.toLowerCase().includes(query.toLowerCase())
-      )
-    : SPECIES
+  const clearSelection = () => {
+    update({ taxonId: null, speciesSci: '', speciesCommon: '', speciesIconic: '', speciesDisplay: '' })
+  }
+
+  const handleQueryChange = (value) => {
+    setQuery(value)
+    setOpen(true)
+    setFetchError(false)
+    clearSelection()
+
+    clearTimeout(debounceRef.current)
+    abortRef.current?.abort()
+
+    if (value.trim().length < 2) {
+      setResults([])
+      setLoading(false)
+      return
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      const controller = new AbortController()
+      abortRef.current = controller
+      setLoading(true)
+      try {
+        const suggestions = await fetchSpeciesSuggestions(value.trim(), controller.signal)
+        setResults(suggestions)
+        setFetchError(false)
+      } catch (e) {
+        if (e.name !== 'AbortError') {
+          setResults([])
+          setFetchError(true)
+          // Never block submission on API failure. Fall back to whatever the user typed.
+          update({ speciesSci: value.trim(), speciesDisplay: value.trim() })
+        }
+      } finally {
+        setLoading(false)
+      }
+    }, SPECIES_DEBOUNCE_MS)
+  }
 
   const selectSpecies = (s) => {
-    update({ species: s.id, speciesDisplay: s.common })
+    update({
+      taxonId:        s.taxonId,
+      speciesSci:     s.sci,
+      speciesCommon:  s.common,
+      speciesIconic:  s.iconic,
+      speciesDisplay: s.common,
+    })
     setQuery(s.common)
     setOpen(false)
   }
@@ -66,7 +101,7 @@ export default function Step1Specimen({ form, update, onNext }) {
 
   const validate = () => {
     const e = {}
-    if (!form.species)      e.species = t('s1_err_species')
+    if (!form.speciesSci)   e.species = t('s1_err_species')
     if (!form.preservation) e.preservation = t('s1_err_preservation')
     if (form.photos.length === 0) e.photos = t('s1_err_photos')
     setErrors(e)
@@ -100,22 +135,32 @@ export default function Step1Specimen({ form, update, onNext }) {
               placeholder={t('s1_species_ph')}
               value={query}
               className={errors.species ? 'error' : ''}
-              onChange={e => { setQuery(e.target.value); setOpen(true); update({ species: '', speciesDisplay: '' }) }}
+              onChange={e => handleQueryChange(e.target.value)}
               onFocus={() => setOpen(true)}
               onBlur={() => setTimeout(() => setOpen(false), 150)}
             />
-            {open && filtered.length > 0 && (
+            {loading && <div className="spinner dark species-search-spinner" />}
+            {open && query.trim().length >= 2 && !loading && (
               <div className="species-dropdown">
-                {filtered.map(s => (
-                  <div key={s.id} className="species-option" onMouseDown={() => selectSpecies(s)}>
-                    {s.common}
-                    {s.sci && <span className="species-option-sci">{s.sci}</span>}
-                  </div>
-                ))}
+                {results.length > 0 ? (
+                  results.map(s => (
+                    <div key={s.taxonId} className="species-option" onMouseDown={() => selectSpecies(s)}>
+                      {s.photoUrl && <img src={s.photoUrl} alt="" className="species-option-photo" />}
+                      <span className="species-option-text">
+                        {s.common}
+                        <span className="species-option-sci">{s.sci}</span>
+                      </span>
+                      {s.iconic && <span className="species-option-badge">{s.iconic}</span>}
+                    </div>
+                  ))
+                ) : fetchError ? null : (
+                  <div className="species-option species-option-empty">{t('s1_species_no_results')}</div>
+                )}
               </div>
             )}
           </div>
           {errors.species && <span className="field-error">{errors.species}</span>}
+          {fetchError && <span className="field-warning">{t('s1_species_fetch_err')}</span>}
         </div>
 
         {/* Preservation */}

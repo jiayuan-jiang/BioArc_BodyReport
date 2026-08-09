@@ -1,5 +1,12 @@
 # Project State Snapshot
-_Last updated: 2026-07-17_
+_Last updated: 2026-08-09_
+
+Note: this snapshot is from branch `feature/species-live-search` (worktree `../BioArc-species-search`),
+based on the last commit on `main` (`03259db`). It does not include `main`'s uncommitted 2026-08-09 work
+(weather rewrite, manual env-field editing, optional photo, `record_number`/`submitted_at` fields, etc.)
+described in `main`'s own `context/state.md`. Those changes are already live on the deployed Kobo form
+(confirmed via a live schema read while working on this branch) even though the code isn't committed yet.
+Reconcile both docs when the branches merge.
 
 ---
 
@@ -39,7 +46,8 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
 - [x] Vite + React project scaffold
 - [x] Global CSS design system (custom properties, card anatomy, all component styles)
 - [x] 5-step card form flow (App.jsx + ProgressBar)
-- [x] Step 1 — Specimen: species dropdown (static list), preservation radio, photo upload with preview
+- [x] Step 1 — Specimen: species search (live iNaturalist Taxa Autocomplete API), preservation radio, photo
+  upload with preview
 - [x] Step 2 — Location: Leaflet map, click-to-pin, GPS auto-detect, coordinate fields, locality
 - [x] Step 3 — Environment: auto-fetch DEM / LUCC / weather with skeleton loading + error states
 - [x] Step 4 — Collection: date picker, collector name, institution, project, habitat, notes
@@ -62,15 +70,29 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
   then deleted the test record.
 - [x] Photo upload to KoboToolbox — now uploaded as a real attachment on the submission (was: preview-only, metadata
   only). Closes the task-queue item.
-
-### In Progress
-- [ ] Species search — migrate from static list to iNaturalist API live autocomplete
-  → spec: `spec/species-api.md`
-  → **Now higher priority than before**: the current hardcoded species list (`Step1Specimen.jsx`) is North American
-  wildlife (Mallard, Raccoon, Coyote, etc.) with slug-style ids (`procyon_lotor`), completely disjoint from the Kobo
-  form's `species` select_one choices (Jaguar, Capybara, Llama, Macaw, Piranha, Anaconda, Toucan, Tapir — scientific
-  names like `Panthera onca`). Submissions currently succeed but write a species value that doesn't match any Kobo
-  choice. Confirmed via test submission: `species: "procyon_lotor"` landed as raw text, not matched against the form.
+- [x] **Species search migrated to iNaturalist API live autocomplete** (2026-08-09). `Step1Specimen.jsx`'s
+  hardcoded North American wildlife list (slug ids like `procyon_lotor`) replaced with a 300ms-debounced
+  live call to `GET https://api.inaturalist.org/v1/taxa/autocomplete`, per `spec/species-api.md`. Dropdown
+  shows photo, common name, scientific name, and an iconic-taxon badge (Aves/Mammalia/etc.); handles
+  no-results and fetch-failure (falls back to the typed text, never blocks submission) states. Form state
+  now stores `taxonId`, `speciesSci`, `speciesCommon`, `speciesIconic` instead of a slug id.
+  Also changed the live Kobo form's `species` field from a closed 8-choice `select_one` (Jaguar, Capybara,
+  Llama, Macaw, Piranha, Anaconda, Toucan, Tapir) to three fields (`species_scientific` text,
+  `species_common` text, `species_taxon_id` integer) via `PATCH /api/v2/assets/{uid}/` +
+  `PATCH /api/v2/assets/{uid}/deployment/`, since the closed list could never match a species coming from
+  full-taxonomy search. `koboApi.js` updated to match. Verified with a real OpenRosa test submission
+  (Mallard / Anas platyrhynchos), confirmed all three fields landed via the REST API, then deleted the
+  test record.
+  Before implementing, evaluated building a self-hosted search index from iNaturalist's official taxonomy
+  export (`taxa.csv.gz`) instead of calling their live API. Downloaded and inspected it directly: 37.7MB
+  compressed, 189MB uncompressed, 1.65M rows (1.28M at `rank=species`). Size was acceptable, but the export
+  has no common/vernacular names at all, only scientific name plus a numeric ancestry chain, which would
+  have broken the "search by common name in any language" requirement the spec exists for. Measured the
+  live API's actual latency instead (5 sample queries, English and non-English): 190 to 300ms, well inside
+  the existing 300ms debounce, removing the other reason to self-host. Kept the original spec's live-API
+  design.
+  Built in worktree `../BioArc-species-search` on branch `feature/species-live-search`, not yet merged
+  into `main`.
 
 ### Blocked / Pending Supervisor Decision
 - [ ] Authentication — does the form require login?
@@ -111,11 +133,19 @@ Submit (new):  POST {BASE_URL}/{OWNER_USERNAME}/submission   (OpenRosa protocol)
                - Auth: Authorization: Token {KOBO_API_KEY}, header X-OpenRosa-Version: 1.0
                - No CORS headers on this endpoint — must be called server-side (see api/kobo-submit.js)
 
-Form fields (survey, in order): survey_intro (note), species (select_one), preservation_method
-(select_one: freeze/alcohol/dry), survey_image (image), location (geopoint, "lat lon alt acc"),
-dem_elevation_m (decimal), land_cover_lucc (text), weather_temperature (decimal),
-weather_precipitation (decimal), weather_wind_speed (decimal), weather_code (integer),
-collection_date (date), collector_name/institution/project_name/habitat_description/locality/notes (text)
+Form fields (survey, in order): survey_intro (note), species_scientific (text), species_common (text),
+species_taxon_id (integer), preservation_method (select_one: freeze/alcohol/dry), survey_image (image),
+location (geopoint, "lat lon alt acc"), dem_elevation_m (decimal), land_cover_lucc (text),
+weather_temperature (decimal), weather_precipitation (decimal), weather_wind_speed (decimal),
+weather_code (integer), collection_date (date),
+collector_name/institution/project_name/habitat_description/locality/notes (text)
+
+Note: `species` was a closed 8-choice select_one (Jaguar, Capybara, Llama, Macaw, Piranha, Anaconda,
+Toucan, Tapir) until 2026-08-09, replaced by the three species_* fields above so arbitrary iNaturalist
+search results can be stored. The live form also already has additional fields (record_number,
+weather_humidity, soil_temperature, soil_moisture, env_manual_fields, env_fetched_snapshot, submitted_at)
+from `main`'s uncommitted 2026-08-09 work, not listed here since that work predates this branch; see the
+note at the top of this file.
 ```
 
 ---
