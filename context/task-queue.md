@@ -1,5 +1,5 @@
 # Task Queue
-_Last updated: 2026-08-09_
+_Last updated: 2026-08-10_
 
 Format: `[priority] Task title. Spec pointer`
 
@@ -50,13 +50,19 @@ Format: `[priority] Task title. Spec pointer`
   Photos now attach to the submission as a real OpenRosa multipart file part (was: preview-only).
   Only the first photo attaches — `survey_image` is a single `image` field, not a repeat group.
 
-- [ ] **[LOW] Offline support / local queue**
-  Service worker to queue submissions when network is unavailable.
-  Only needed if field researchers have unreliable connectivity.
-
 ---
 
 ## Done
+
+- [x] **[HIGH] Offline submission support + PWA** (2026-08-10)
+  Full offline flow for field use with unreliable/no connectivity: species search already degraded
+  gracefully (unchanged), Step 3 environment fetch now defers to a `resolveEnvironment()` backfill keyed
+  to the original collection date/location instead of fetching at collection time, and Step 5 queues a
+  submission locally (IndexedDB) instead of failing when offline or on a genuine network error, auto-
+  syncing on reconnect. App is installable and its shell loads with zero network via `vite-plugin-pwa`
+  (new dev dependency). New `src/offline/` module + `OfflineBadge.jsx` header UI (connectivity status,
+  pending count, manual sync/discard).
+  → `spec/offline.md`, `context/state.md`
 
 - [x] **[HIGH] Species search. iNaturalist API live autocomplete** (2026-08-09)
   Replaced the hardcoded North American wildlife list in `Step1Specimen.jsx` with real-time search against

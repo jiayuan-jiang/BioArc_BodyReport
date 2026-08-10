@@ -1,5 +1,5 @@
 # Project State Snapshot
-_Last updated: 2026-08-09_
+_Last updated: 2026-08-10_
 
 ---
 
@@ -15,8 +15,16 @@ _Last updated: 2026-08-09_
 | Elevation API | Open-Elevation (SRTM) | free, no key |
 | Weather API | Open-Meteo archive | free, no key |
 | Land cover API | ESA WorldCover WCS + OSM Overpass fallback | free, no key |
-| Deployment | Vercel (auto-deploy via GitHub App, live) | https://bio-514ojjzv3-jiayuan-jiangs-projects.vercel.app |
+| PWA / offline | vite-plugin-pwa (Workbox `generateSW`) + IndexedDB local queue | ^1.3.0, new 2026-08-10 |
+| Deployment | Vercel (auto-deploy via GitHub App, live) | https://bioarc.vercel.app |
 | Hosting repo | GitHub — jiayuan-jiang/BioArc_BodyReport | — |
+
+Note (2026-08-09): the URL above is the stable production alias (`vercel projects ls` shows it as the
+project's "Latest Production URL"), and always points at the current production deployment. Per-deployment
+URLs (the ones GitHub's commit status / `vercel` CLI output show right after a push, e.g.
+`bio-<hash>-jiayuan-jiangs-projects.vercel.app`) are gated behind Vercel's SSO wall for anyone not logged
+into the Vercel account and will look broken to an anonymous visitor. Always share/record the stable alias,
+not a per-deployment URL.
 
 ---
 
@@ -138,6 +146,44 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
   live API's actual latency instead (5 sample queries, English and non-English): 190 to 300ms, well inside
   the existing 300ms debounce, removing the other reason to self-host. Kept the original spec's live-API
   design.
+- [x] **Full offline submission support + PWA** (2026-08-10). Field use with no connectivity was the
+  motivating case (task-queue item, previously `[LOW]`/deferred). Three parts, detailed in
+  `spec/offline.md`:
+  1. **PWA shell.** Added `vite-plugin-pwa` (new dev dependency, Workbox `generateSW` mode) so the app
+     itself precaches and opens with zero network. Runtime `CacheFirst` caching added for OSM map tiles,
+     the Leaflet marker-icon CDN, and Google Fonts (bonus: previously-viewed map areas still render
+     offline). Live data APIs (iNaturalist, Open-Meteo, Open-Elevation, ESA WorldCover, `/api/kobo-submit`)
+     are deliberately NOT cached, since offline handling for those is app-level (below), not stale SW
+     responses. New icon set in `public/` (`icon.svg` rasterized via `rsvg-convert` from the existing
+     header logo, no new asset design needed).
+  2. **Deferred environment fetch.** `Step3Environment.jsx` skips the elevation/weather/land-cover fetch
+     when offline (or defers if all three fail even while nominally online, e.g. a false `navigator.onLine`
+     reading) instead of submitting blank fields. Sets `form.envFetchPending`; the manual edit-pencil UI
+     stays available so a researcher with field instruments can still enter readings by hand. A new
+     `resolveEnvironment(form)` in `environmentApi.js` re-fetches later using the form's *original*
+     `collectionDate`/lat/lng, not the date it happens to sync on. `fetchEnvironmentData()` was extracted
+     out of Step 3 so both the live UI and the sync queue share identical fetch/fallback logic.
+  3. **Local submission queue.** New `src/offline/` module: `db.js` (IndexedDB, not `localStorage`,
+     since queued records carry real `File`/`Blob` photo objects), `queue.js`
+     (`enqueueSubmission`/`processQueue`, retried oldest-first, stops the batch on a genuine network
+     error but keeps going past a one-off per-record failure), `OfflineContext.jsx` (`navigator.onLine` +
+     `online`/`offline` events → `useOffline()`, auto-triggers `processQueue()` on reconnect + a 5-minute
+     fallback poll for devices that don't fire the event reliably). `Step5Review.jsx` now queues instead
+     of failing when offline or when a submit attempt hits a genuine connectivity error (`TypeError` from
+     `fetch`, distinguished from a real Kobo 4xx/5xx rejection, which still surfaces to the user
+     immediately rather than being silently queued forever). `koboApi.js`'s `submitToKobo()` takes an
+     optional `instanceId` so a retried record keeps the same ID across attempts. New
+     `OfflineBadge.jsx` header component shows connectivity + pending count, with a panel to inspect/
+     manually sync/discard queued records.
+  Verified with a production build and a full click-through against `vite preview` (offline simulated by
+  overriding `navigator.onLine` + dispatching the `online`/`offline` events the app itself listens for):
+  deferred env banner, offline "Save on This Device" success screen, queue panel, and auto-sync on
+  reconnect all confirmed working. Caught a real bug this way: `processQueue()` was discarding a
+  successful `resolveEnvironment()` backfill whenever the submit attempt right after it failed, because
+  the error handler persisted the stale original `entry.form` instead of the updated one — fixed in
+  `queue.js` (see `memory/sessions/2026-08-10.md` for the repro). See `spec/offline.md` for the full
+  design writeup, including what's explicitly out of scope (offline map/
+  species browsing beyond cached tiles, edit-after-sync, the Background Sync API).
 
 ### In Progress
 (none)
@@ -167,7 +213,6 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
       not a quick add.
 - [ ] Dashboard — use KoboToolbox built-in or build custom?
   → spec: `spec/dashboard.md`
-- [ ] Offline support — service worker / local queue for field use without internet
 - [ ] Multi-language UI — form already has EN/ES/FR/PT in KoboToolbox; React app is English only
 
 ### Known Issues
@@ -251,3 +296,7 @@ Kobo plan or a periodic export+prune routine if volume grows.
 | KoboToolbox XML builder + client call | `src/utils/koboApi.js` |
 | KoboToolbox submission proxy (server-side) | `api/kobo-submit.js` |
 | Env data fetch | `src/utils/environmentApi.js` |
+| Offline queue (IndexedDB, sync) | `src/offline/db.js`, `src/offline/queue.js` |
+| Online/offline detection + sync context | `src/offline/OfflineContext.jsx` |
+| Connectivity badge + queue panel UI | `src/components/OfflineBadge.jsx` |
+| PWA config (manifest, precache, runtime caching) | `vite.config.js` |

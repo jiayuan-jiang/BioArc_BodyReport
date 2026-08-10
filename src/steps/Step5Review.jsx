@@ -1,5 +1,8 @@
 import { useState } from 'react'
 import { submitToKobo } from '../utils/koboApi'
+import { resolveEnvironment } from '../utils/environmentApi'
+import { enqueueSubmission } from '../offline/queue'
+import { useOffline } from '../offline/OfflineContext'
 import { useT } from '../i18n'
 
 const WMO_CODES = {
@@ -32,16 +35,49 @@ function Section({ title, children }) {
 
 export default function Step5Review({ form, onBack, onSuccess }) {
   const { t } = useT()
+  const { online, refreshQueue } = useOffline()
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]           = useState(null)
+
+  const queueLocally = async () => {
+    const id = await enqueueSubmission(form)
+    await refreshQueue()
+    onSuccess(id, { queued: true })
+  }
 
   const handleSubmit = async () => {
     setSubmitting(true)
     setError(null)
+
+    if (!online) {
+      try {
+        await queueLocally()
+      } catch (e) {
+        setError(e.message || t('s5_err_submit'))
+        setSubmitting(false)
+      }
+      return
+    }
+
     try {
-      const id = await submitToKobo(form)
-      onSuccess(id)
+      // A last-chance attempt to fill in environment data that was deferred
+      // at Step 3 (e.g. connectivity dropped mid-session then came back) —
+      // still keyed off the original collectionDate, not today.
+      const submitForm = form.envFetchPending ? await resolveEnvironment(form) : form
+      const id = await submitToKobo(submitForm)
+      onSuccess(id, { queued: false })
     } catch (e) {
+      // fetch() throws a TypeError specifically on a real connectivity
+      // failure (vs. a Kobo 4xx/5xx, which koboApi.js throws as a plain
+      // Error) — that's what tells us this is a "went offline mid-submit"
+      // case rather than a real rejection the user needs to see and fix now.
+      const wentOffline = !navigator.onLine || e instanceof TypeError
+      if (wentOffline) {
+        try {
+          await queueLocally()
+          return
+        } catch { /* fall through to the error message below */ }
+      }
       setError(e.message || t('s5_err_submit'))
       setSubmitting(false)
     }
@@ -124,6 +160,15 @@ export default function Step5Review({ form, onBack, onSuccess }) {
           <Row label={t('s5_row_notes')}       value={form.notes} />
         </Section>
 
+        {!online && !error && (
+          <div className="env-status warning">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
+            </svg>
+            {t('s5_offline_notice')}
+          </div>
+        )}
+
         {error && (
           <div className="env-status error">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -143,12 +188,12 @@ export default function Step5Review({ form, onBack, onSuccess }) {
         </button>
         <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
           {submitting
-            ? <><div className="spinner" /> {t('s5_submitting')}</>
+            ? <><div className="spinner" /> {online ? t('s5_submitting') : t('s5_saving')}</>
             : <>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M22 2L11 13"/><path d="M22 2L15 22l-4-9-9-4 20-7z"/>
                 </svg>
-                {t('s5_submit')}
+                {online ? t('s5_submit') : t('s5_save_offline')}
               </>
           }
         </button>

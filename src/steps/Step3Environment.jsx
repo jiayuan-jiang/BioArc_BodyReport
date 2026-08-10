@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { fetchElevation, fetchWeather, fetchLandCover } from '../utils/environmentApi'
+import { fetchEnvironmentData } from '../utils/environmentApi'
 import { useT } from '../i18n'
+import { useOffline } from '../offline/OfflineContext'
 
 const WMO_CODES = {
   0: 'Clear Sky', 1: 'Mainly Clear', 2: 'Partly Cloudy', 3: 'Overcast',
@@ -85,57 +86,58 @@ function EnvItem({ label, value, displayValue, unit, sub, loading, manual, manua
 
 export default function Step3Environment({ form, update, onNext, onBack }) {
   const { t } = useT()
+  const { online } = useOffline()
   const [status, setStatus] = useState('idle')
-  const [errMsg, setErrMsg] = useState('')
   const manualFields = new Set(form.manualEnvFields)
 
   const hasLocation = form.latitude && form.longitude
 
+  const runFetch = async () => {
+    if (!navigator.onLine) {
+      setStatus('deferred')
+      update({ envFetchPending: true })
+      return
+    }
+
+    setStatus('loading')
+    const { fetched, weatherSource } = await fetchEnvironmentData(form.latitude, form.longitude, form.collectionDate)
+
+    // Only elevation/temperature/landCover decide "total failure" — humidity,
+    // wind etc. all come from the same weather call, so they'd fail together
+    // anyway. A total failure (most likely: no connectivity at all, even
+    // though navigator.onLine said otherwise) gets deferred to the offline
+    // queue instead of silently submitting with every env field blank.
+    const totalFailure = fetched.elevation == null && fetched.temperature == null && fetched.landCover == null
+
+    // Snapshot the as-fetched values before any manual edits can happen —
+    // kept in the submission even if the fields below get overridden, so
+    // the model's original output is never silently lost.
+    update({ ...fetched, weatherSource, envFetchedSnapshot: { ...fetched, weatherSource }, envFetchPending: totalFailure })
+    setStatus(totalFailure ? 'deferred' : 'done')
+  }
+
   useEffect(() => {
     if (!hasLocation) return
     if (form.elevation !== null) return
-
-    const fetch = async () => {
-      setStatus('loading')
-      try {
-        const [elev, weather, lc] = await Promise.allSettled([
-          fetchElevation(form.latitude, form.longitude),
-          fetchWeather(form.latitude, form.longitude, form.collectionDate),
-          fetchLandCover(form.latitude, form.longitude),
-        ])
-
-        const weatherSource = weather.status === 'fulfilled' ? weather.value.source : null
-
-        const fetched = {
-          elevation:       elev.status    === 'fulfilled' ? elev.value    : null,
-          temperature:     weather.status === 'fulfilled' ? weather.value.temperature : null,
-          humidity:        weather.status === 'fulfilled' ? weather.value.humidity : null,
-          precipitation:   weather.status === 'fulfilled' ? weather.value.precipitation : null,
-          windSpeed:       weather.status === 'fulfilled' ? weather.value.windSpeed : null,
-          weatherCode:     weather.status === 'fulfilled' ? weather.value.weatherCode : null,
-          soilTemperature: weather.status === 'fulfilled' ? weather.value.soilTemperature : null,
-          soilMoisture:    weather.status === 'fulfilled' ? weather.value.soilMoisture : null,
-          landCover:       lc.status      === 'fulfilled' ? lc.value      : null,
-        }
-
-        // Snapshot the as-fetched values before any manual edits can happen —
-        // kept in the submission even if the fields below get overridden, so
-        // the model's original output is never silently lost.
-        update({ ...fetched, weatherSource, envFetchedSnapshot: { ...fetched, weatherSource } })
-        setStatus('done')
-      } catch {
-        setStatus('error')
-        setErrMsg(t('s3_error'))
-      }
-    }
-
-    fetch()
+    if (form.envFetchPending) { setStatus('deferred'); return }
+    runFetch()
   }, [])
 
   const editField = (field) => (newValue) => {
     const next = new Set(form.manualEnvFields)
     next.add(field)
-    update({ [field]: newValue, manualEnvFields: [...next] })
+    const patch = { [field]: newValue, manualEnvFields: [...next] }
+
+    // If the researcher manually fills in the core fields by hand while
+    // offline, there's nothing left to backfill later — clear the pending
+    // flag so the sync queue doesn't waste a retry re-fetching them.
+    if (form.envFetchPending) {
+      const coreFields = { elevation: form.elevation, temperature: form.temperature, landCover: form.landCover, ...patch }
+      const stillMissing = coreFields.elevation == null && coreFields.temperature == null && coreFields.landCover == null
+      patch.envFetchPending = stillMissing
+    }
+
+    update(patch)
   }
 
   const loading = status === 'loading'
@@ -186,12 +188,13 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
           </div>
         )}
 
-        {hasLocation && status === 'error' && (
-          <div className="env-status error">
+        {hasLocation && status === 'deferred' && (
+          <div className="env-status warning">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
             </svg>
-            {t('s3_error')} {t('s3_error_cont')}
+            <span>{online ? t('s3_deferred_online') : t('s3_deferred_offline')}</span>
+            <button type="button" className="btn-inline" onClick={runFetch}>{t('s3_retry')}</button>
           </div>
         )}
 

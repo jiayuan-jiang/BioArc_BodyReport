@@ -150,6 +150,59 @@ async function fetchLandCoverOSM(lat, lng) {
   return fetchLandCoverNominatim(lat, lng)
 }
 
+// Runs all three environment lookups together and never throws — each
+// source fails independently (Promise.allSettled), landing as a null field
+// instead of blocking the other two. Shared by the live Step 3 fetch and the
+// offline queue's deferred backfill so both follow identical fallback rules.
+export async function fetchEnvironmentData(lat, lng, date) {
+  const [elev, weather, lc] = await Promise.allSettled([
+    fetchElevation(lat, lng),
+    fetchWeather(lat, lng, date),
+    fetchLandCover(lat, lng),
+  ])
+
+  const weatherSource = weather.status === 'fulfilled' ? weather.value.source : null
+
+  const fetched = {
+    elevation:       elev.status    === 'fulfilled' ? elev.value    : null,
+    temperature:     weather.status === 'fulfilled' ? weather.value.temperature : null,
+    humidity:        weather.status === 'fulfilled' ? weather.value.humidity : null,
+    precipitation:   weather.status === 'fulfilled' ? weather.value.precipitation : null,
+    windSpeed:       weather.status === 'fulfilled' ? weather.value.windSpeed : null,
+    weatherCode:     weather.status === 'fulfilled' ? weather.value.weatherCode : null,
+    soilTemperature: weather.status === 'fulfilled' ? weather.value.soilTemperature : null,
+    soilMoisture:    weather.status === 'fulfilled' ? weather.value.soilMoisture : null,
+    landCover:       lc.status      === 'fulfilled' ? lc.value      : null,
+  }
+
+  return { fetched, weatherSource }
+}
+
+// Used by the offline queue (and Step 5 as a last-chance attempt before
+// submitting) to fill in environmental data that was deferred because the
+// device was offline at Step 3. Uses the original collectionDate stored on
+// the form, not the current date, so weather still matches when the record
+// was actually collected. Only overwrites fields the user hasn't manually
+// entered and that are still null — never clobbers a manual reading.
+export async function resolveEnvironment(form) {
+  if (!form.envFetchPending || !form.latitude || !form.longitude) return form
+
+  const { fetched, weatherSource } = await fetchEnvironmentData(form.latitude, form.longitude, form.collectionDate)
+  const manualFields = new Set(form.manualEnvFields ?? [])
+
+  const merged = { ...form }
+  for (const [key, value] of Object.entries(fetched)) {
+    if (!manualFields.has(key) && merged[key] == null) merged[key] = value
+  }
+  if (merged.weatherSource == null) merged.weatherSource = weatherSource
+  if (merged.envFetchedSnapshot == null) merged.envFetchedSnapshot = { ...fetched, weatherSource }
+
+  const stillMissing = merged.elevation == null && merged.temperature == null && merged.landCover == null
+  merged.envFetchPending = stillMissing
+
+  return merged
+}
+
 async function fetchLandCoverNominatim(lat, lng) {
   const res = await fetch(
     `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,

@@ -70,8 +70,7 @@ function buildSubmissionXml(form, instanceId) {
 </data>`
 }
 
-export async function submitToKobo(form) {
-  const instanceId = crypto.randomUUID()
+export async function submitToKobo(form, instanceId = crypto.randomUUID()) {
   const xml = buildSubmissionXml(form, instanceId)
 
   const body = new FormData()

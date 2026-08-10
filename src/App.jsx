@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { LangProvider, useT } from './i18n'
+import { OfflineProvider } from './offline/OfflineContext'
 import ProgressBar from './components/ProgressBar'
 import LanguageSwitcher from './components/LanguageSwitcher'
+import OfflineBadge from './components/OfflineBadge'
 import Step1Specimen from './steps/Step1Specimen'
 import Step2Location from './steps/Step2Location'
 import Step3Environment from './steps/Step3Environment'
@@ -33,6 +35,7 @@ const initialForm = {
   weatherSource: null,
   manualEnvFields: [],
   envFetchedSnapshot: null,
+  envFetchPending: false,
   collectionDate: new Date().toISOString().split('T')[0],
   recordNumber: '',
   collectorName: '',
@@ -48,6 +51,7 @@ function AppInner() {
   const [form, setForm] = useState(initialForm)
   const [submitted, setSubmitted] = useState(false)
   const [submissionId, setSubmissionId] = useState(null)
+  const [queued, setQueued] = useState(false)
 
   const STEPS = [
     { id: 1, label: t('step_specimen') },
@@ -61,8 +65,9 @@ function AppInner() {
   const next = () => setStep(s => Math.min(s + 1, 5))
   const back = () => setStep(s => Math.max(s - 1, 1))
 
-  const handleSubmitSuccess = (id) => {
+  const handleSubmitSuccess = (id, { queued: wasQueued = false } = {}) => {
     setSubmissionId(id)
+    setQueued(wasQueued)
     setSubmitted(true)
   }
 
@@ -71,6 +76,7 @@ function AppInner() {
     setStep(1)
     setSubmitted(false)
     setSubmissionId(null)
+    setQueued(false)
   }
 
   return (
@@ -85,6 +91,7 @@ function AppInner() {
         </div>
         <span className="app-title">BioARC</span>
         <span className="app-subtitle">{t('subtitle')}</span>
+        <OfflineBadge />
         <LanguageSwitcher />
       </header>
 
@@ -96,13 +103,19 @@ function AppInner() {
         {submitted ? (
           <div className="card" style={{ maxWidth: 640 }}>
             <div className="success-card">
-              <div className="success-icon">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 6L9 17l-5-5" />
-                </svg>
+              <div className={`success-icon ${queued ? 'queued' : ''}`}>
+                {queued ? (
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" />
+                  </svg>
+                ) : (
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                )}
               </div>
-              <h2>{t('success_title')}</h2>
-              <p>{t('success_body')}</p>
+              <h2>{queued ? t('success_queued_title') : t('success_title')}</h2>
+              <p>{queued ? t('success_queued_body') : t('success_body')}</p>
               {submissionId && (
                 <span className="success-id">ID: {submissionId}</span>
               )}
@@ -130,7 +143,9 @@ function AppInner() {
 export default function App() {
   return (
     <LangProvider>
-      <AppInner />
+      <OfflineProvider>
+        <AppInner />
+      </OfflineProvider>
     </LangProvider>
   )
 }
