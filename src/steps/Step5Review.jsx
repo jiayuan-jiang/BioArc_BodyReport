@@ -92,6 +92,9 @@ export default function Step5Review({ form, onBack, onSuccess }) {
   const weatherLabel = form.weatherCode != null
     ? (WMO_CODES[form.weatherCode] ?? `Code ${form.weatherCode}`)
     : null
+  const weatherDailyLabel = form.weatherCodeDaily != null
+    ? (WMO_CODES[form.weatherCodeDaily] ?? `Code ${form.weatherCodeDaily}`)
+    : null
 
   return (
     <div className="card">
@@ -142,12 +145,21 @@ export default function Step5Review({ form, onBack, onSuccess }) {
           <Row label={t('s5_row_elevation')}    value={form.elevation    != null ? `${form.elevation} m`       : null} />
           <Row label={t('s5_row_landcover')}    value={form.landCover} />
           <Row label={t('s5_row_temperature')}  value={form.temperature  != null ? `${form.temperature} °C`    : null} />
+          <Row label={t('s5_row_temperature_daily')}  value={form.temperatureDaily  != null ? `${form.temperatureDaily} °C`    : null} />
           <Row label={t('s5_row_humidity')}     value={form.humidity     != null ? `${form.humidity}%`         : null} />
+          <Row label={t('s5_row_humidity_daily')}     value={form.humidityDaily     != null ? `${form.humidityDaily}%`         : null} />
           <Row label={t('s5_row_precipitation')}value={form.precipitation!= null ? `${form.precipitation} mm`  : null} />
+          <Row label={t('s5_row_precipitation_daily')}value={form.precipitationDaily!= null ? `${form.precipitationDaily} mm`  : null} />
           <Row label={t('s5_row_wind')}         value={form.windSpeed    != null ? `${form.windSpeed} km/h`    : null} />
+          <Row label={t('s5_row_wind_daily')}         value={form.windSpeedDaily    != null ? `${form.windSpeedDaily} km/h`    : null} />
           <Row label={t('s5_row_weather')}      value={weatherLabel} />
+          <Row label={t('s5_row_weather_daily')}      value={weatherDailyLabel} />
           <Row label={t('s5_row_soil_temp')}     value={form.soilTemperature != null ? `${form.soilTemperature} °C`     : null} />
+          <Row label={t('s5_row_soil_temp_daily')}     value={form.soilTemperatureDaily != null ? `${form.soilTemperatureDaily} °C`     : null} />
           <Row label={t('s5_row_soil_moisture')} value={form.soilMoisture    != null ? `${form.soilMoisture} m³/m³`     : null} />
+          <Row label={t('s5_row_soil_moisture_daily')} value={form.soilMoistureDaily    != null ? `${form.soilMoistureDaily} m³/m³`     : null} />
+          <Row label={t('s5_row_distance_road')}  value={form.distanceToRoad  != null ? `${form.distanceToRoad} m`  : null} />
+          <Row label={t('s5_row_distance_water')} value={form.distanceToWater != null ? `${form.distanceToWater} m` : null} />
         </Section>
 
         <Section title={t('s5_sec_coll')}>

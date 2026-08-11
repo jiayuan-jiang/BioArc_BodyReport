@@ -14,7 +14,7 @@ export async function fetchElevation(lat, lng) {
 }
 
 const DAILY_VARS = [
-  'temperature_2m_max', 'relative_humidity_2m_mean', 'precipitation_sum',
+  'temperature_2m_mean', 'relative_humidity_2m_mean', 'precipitation_sum',
   'windspeed_10m_max', 'weathercode',
   'soil_temperature_0_to_7cm_mean', 'soil_moisture_0_to_7cm_mean',
 ].join(',')
@@ -69,10 +69,10 @@ async function fetchDailyWeatherFrom(base, lat, lng, date) {
   const data = await res.json()
 
   const d = data.daily
-  if (!d || d.temperature_2m_max?.[0] == null) return null
+  if (!d || d.temperature_2m_mean?.[0] == null) return null
 
   return {
-    temperature:     d.temperature_2m_max?.[0]              ?? null,
+    temperature:     d.temperature_2m_mean?.[0]              ?? null,
     humidity:        d.relative_humidity_2m_mean?.[0]        ?? null,
     precipitation:   d.precipitation_sum?.[0]                 ?? null,
     windSpeed:       d.windspeed_10m_max?.[0]                 ?? null,
@@ -83,13 +83,73 @@ async function fetchDailyWeatherFrom(base, lat, lng, date) {
   }
 }
 
+// Open-Meteo's forecast `daily` block has no daily soil-aggregate variables
+// at all (confirmed directly: the response comes back with unit "undefined"
+// and a null value) — only the archive endpoint computes those, and archive
+// can't cover "today" due to its processing lag. Its *hourly* soil variables
+// are available for today, though, so compute the daily mean ourselves from
+// those instead of leaving the field permanently null on the live path.
+async function fetchHourlySoilDailyAverage(lat, lng, date) {
+  const url = new URL('https://api.open-meteo.com/v1/forecast')
+  url.searchParams.set('latitude', lat)
+  url.searchParams.set('longitude', lng)
+  url.searchParams.set('start_date', date)
+  url.searchParams.set('end_date', date)
+  url.searchParams.set('hourly', 'soil_temperature_0cm,soil_moisture_0_to_1cm')
+  url.searchParams.set('timezone', 'auto')
+
+  const res = await fetch(url)
+  if (!res.ok) return null
+  const data = await res.json()
+  const h = data.hourly
+  if (!h) return null
+
+  const mean = (arr, decimals) => {
+    const vals = (arr ?? []).filter(v => v != null)
+    if (!vals.length) return null
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length
+    const factor = 10 ** decimals
+    return Math.round(avg * factor) / factor
+  }
+
+  return {
+    soilTemperature: mean(h.soil_temperature_0cm, 1),
+    soilMoisture:    mean(h.soil_moisture_0_to_1cm, 3),
+  }
+}
+
 export async function fetchWeather(lat, lng, date) {
   // "Today" is the common case (collectionDate defaults to today) and is most
   // likely a live field submission — use the real-time `current` endpoint
   // (~15 min resolution) instead of a same-day daily aggregate.
   if (isToday(date)) {
     const current = await fetchCurrentWeather(lat, lng)
-    if (current) return current
+    if (current) {
+      // Alongside the live reading, also fetch today's daily aggregate as a
+      // reference point for comparison. Best-effort: if this secondary fetch
+      // fails, the *Daily fields just come back null — don't let it take down
+      // the already-successful live reading.
+      let daily = null
+      try {
+        daily = await fetchDailyWeatherFrom('https://api.open-meteo.com/v1/forecast', lat, lng, date)
+      } catch { /* daily companion is a bonus, not required */ }
+
+      let soilDaily = null
+      try {
+        soilDaily = await fetchHourlySoilDailyAverage(lat, lng, date)
+      } catch { /* same — best-effort only */ }
+
+      return {
+        ...current,
+        temperatureDaily:     daily?.temperature     ?? null,
+        humidityDaily:        daily?.humidity         ?? null,
+        precipitationDaily:   daily?.precipitation    ?? null,
+        windSpeedDaily:       daily?.windSpeed         ?? null,
+        weatherCodeDaily:     daily?.weatherCode       ?? null,
+        soilTemperatureDaily: soilDaily?.soilTemperature ?? null,
+        soilMoistureDaily:    soilDaily?.soilMoisture    ?? null,
+      }
+    }
   }
 
   // ERA5 reanalysis (archive) has a ~2-7 day processing lag and is the only
@@ -155,10 +215,12 @@ async function fetchLandCoverOSM(lat, lng) {
 // instead of blocking the other two. Shared by the live Step 3 fetch and the
 // offline queue's deferred backfill so both follow identical fallback rules.
 export async function fetchEnvironmentData(lat, lng, date) {
-  const [elev, weather, lc] = await Promise.allSettled([
+  const [elev, weather, lc, road, water] = await Promise.allSettled([
     fetchElevation(lat, lng),
     fetchWeather(lat, lng, date),
     fetchLandCover(lat, lng),
+    fetchDistanceToRoad(lat, lng),
+    fetchDistanceToWater(lat, lng),
   ])
 
   const weatherSource = weather.status === 'fulfilled' ? weather.value.source : null
@@ -172,7 +234,16 @@ export async function fetchEnvironmentData(lat, lng, date) {
     weatherCode:     weather.status === 'fulfilled' ? weather.value.weatherCode : null,
     soilTemperature: weather.status === 'fulfilled' ? weather.value.soilTemperature : null,
     soilMoisture:    weather.status === 'fulfilled' ? weather.value.soilMoisture : null,
+    temperatureDaily:     weather.status === 'fulfilled' ? weather.value.temperatureDaily     ?? null : null,
+    humidityDaily:        weather.status === 'fulfilled' ? weather.value.humidityDaily        ?? null : null,
+    precipitationDaily:   weather.status === 'fulfilled' ? weather.value.precipitationDaily    ?? null : null,
+    windSpeedDaily:       weather.status === 'fulfilled' ? weather.value.windSpeedDaily        ?? null : null,
+    weatherCodeDaily:     weather.status === 'fulfilled' ? weather.value.weatherCodeDaily      ?? null : null,
+    soilTemperatureDaily: weather.status === 'fulfilled' ? weather.value.soilTemperatureDaily  ?? null : null,
+    soilMoistureDaily:    weather.status === 'fulfilled' ? weather.value.soilMoistureDaily     ?? null : null,
     landCover:       lc.status      === 'fulfilled' ? lc.value      : null,
+    distanceToRoad:  road.status    === 'fulfilled' ? road.value    : null,
+    distanceToWater: water.status   === 'fulfilled' ? water.value   : null,
   }
 
   return { fetched, weatherSource }
@@ -201,6 +272,79 @@ export async function resolveEnvironment(form) {
   merged.envFetchPending = stillMissing
 
   return merged
+}
+
+function haversineMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000
+  const toRad = d => d * Math.PI / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLon = toRad(lon2 - lon1)
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(a))
+}
+
+// Public Overpass instances to try, in order. overpass-api.de is the main
+// instance but is a shared free resource that rate-limits/temporarily blocks
+// callers under repeated rapid requests (observed directly during dev
+// testing); openstreetmap.fr mirrors the same data and is tried next if the
+// main instance is unreachable or blocked for this client.
+const OVERPASS_ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.openstreetmap.fr/api/interpreter',
+]
+
+// Distance to the nearest OSM feature matching the statements `buildStatements`
+// produces, via Overpass's `around` search with an expanding radius (a fixed
+// small radius misses features in sparse rural areas). Measures distance to
+// the nearest returned vertex rather than the true perpendicular distance to
+// the way/relation's line, an acceptable approximation given typical OSM
+// vertex density. Returns null if nothing is found within the largest radius
+// on every endpoint tried.
+async function fetchNearestOSMDistance(lat, lng, buildStatements) {
+  const radii = [2000, 10000, 50000]
+  for (const radius of radii) {
+    const query = `[out:json][timeout:15];(${buildStatements(radius, lat, lng)});out geom 30;`
+    for (const endpoint of OVERPASS_ENDPOINTS) {
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `data=${encodeURIComponent(query)}`,
+          signal: AbortSignal.timeout(15000),
+        })
+        if (!res.ok || !(res.headers.get('content-type') || '').includes('json')) continue
+        const data = await res.json()
+
+        let minDist = Infinity
+        for (const el of data.elements ?? []) {
+          const coords = el.geometry ?? el.members?.flatMap(m => m.geometry ?? []) ?? []
+          for (const pt of coords) {
+            if (pt?.lat == null || pt?.lon == null) continue
+            const d = haversineMeters(lat, lng, pt.lat, pt.lon)
+            if (d < minDist) minDist = d
+          }
+        }
+        if (minDist < Infinity) return Math.round(minDist)
+        break // this endpoint answered but found nothing at this radius — escalate radius, don't also ask the other endpoint the same question
+      } catch { /* try the next endpoint */ }
+    }
+  }
+  return null
+}
+
+export async function fetchDistanceToRoad(lat, lng) {
+  return fetchNearestOSMDistance(lat, lng, (r, la, lo) =>
+    `way(around:${r},${la},${lo})[highway];`
+  )
+}
+
+export async function fetchDistanceToWater(lat, lng) {
+  return fetchNearestOSMDistance(lat, lng, (r, la, lo) =>
+    `way(around:${r},${la},${lo})["natural"="water"];` +
+    `way(around:${r},${la},${lo})[waterway];` +
+    `relation(around:${r},${la},${lo})["natural"="water"];`
+  )
 }
 
 async function fetchLandCoverNominatim(lat, lng) {

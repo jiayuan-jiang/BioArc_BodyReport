@@ -732,6 +732,9 @@ input.error, textarea.error, select.error {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+  max-height: 520px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .env-item {

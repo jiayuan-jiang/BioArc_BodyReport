@@ -48,12 +48,21 @@ function buildSubmissionXml(form, instanceId) {
   ${field('dem_elevation_m', form.elevation)}
   ${field('land_cover_lucc', form.landCover)}
   ${field('weather_temperature', form.temperature)}
+  ${field('weather_temperature_daily', form.temperatureDaily)}
   ${field('weather_humidity', form.humidity)}
+  ${field('weather_humidity_daily', form.humidityDaily)}
   ${field('weather_precipitation', form.precipitation)}
+  ${field('weather_precipitation_daily', form.precipitationDaily)}
   ${field('weather_wind_speed', form.windSpeed)}
+  ${field('weather_wind_speed_daily', form.windSpeedDaily)}
   ${field('weather_code', form.weatherCode)}
+  ${field('weather_code_daily', form.weatherCodeDaily)}
   ${field('soil_temperature', form.soilTemperature)}
+  ${field('soil_temperature_daily', form.soilTemperatureDaily)}
   ${field('soil_moisture', form.soilMoisture)}
+  ${field('soil_moisture_daily', form.soilMoistureDaily)}
+  ${field('distance_to_road_m', form.distanceToRoad)}
+  ${field('distance_to_water_m', form.distanceToWater)}
   ${field('env_manual_fields', manualFields)}
   ${field('env_fetched_snapshot', fetchedSnapshot)}
   ${field('collection_date', form.collectionDate)}

@@ -1,5 +1,5 @@
 # Task Queue
-_Last updated: 2026-08-10_
+_Last updated: 2026-08-11_
 
 Format: `[priority] Task title. Spec pointer`
 
@@ -53,6 +53,25 @@ Format: `[priority] Task title. Spec pointer`
 ---
 
 ## Done
+
+- [x] **[MEDIUM] Daily-average companions for live weather/soil fields** (2026-08-11)
+  When Step 3 shows a live (`current`) weather reading, it now also fetches and shows today's daily
+  aggregate alongside each of the 7 live fields (temperature, humidity, precipitation, wind, weather, soil
+  temp, soil moisture) — 7 new `EnvItem` cards, Kobo fields (`weather_temperature_daily` etc.), i18n, and
+  Step 5 rows. `.env-grid` capped at 520px with internal scroll since the card count nearly doubled.
+  Verified via a direct OpenRosa test submission and a full browser click-through. Known gap: soil daily
+  companions always come back null (Open-Meteo forecast endpoint has no daily soil aggregate variables).
+  → `context/state.md`, `memory/sessions/2026-08-11.md`
+
+- [x] **[MEDIUM] Distance to road / distance to water proximity fields** (2026-08-11)
+  Two new auto-fetched Step 3 env fields (`distanceToRoad`, `distanceToWater`), sourced from OSM via the
+  Overpass API with an expanding search radius, same manual-override pattern as the existing nine env
+  fields. Full stack: `environmentApi.js`, Step 3/5 UI, `koboApi.js`, `App.jsx`, 4-language i18n, deployed
+  Kobo schema (`distance_to_road_m`/`distance_to_water_m`). Verified via a direct OpenRosa test submission
+  (fields confirmed via REST read-back, test record deleted) and a full browser click-through of Steps 1–3.
+  Known risk: the public Overpass instance rate-limits under repeated rapid requests — see Known Issues in
+  `context/state.md`.
+  → `context/state.md`, `memory/sessions/2026-08-11.md`
 
 - [x] **[HIGH] Offline submission support + PWA** (2026-08-10)
   Full offline flow for field use with unreliable/no connectivity: species search already degraded

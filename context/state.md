@@ -1,5 +1,5 @@
 # Project State Snapshot
-_Last updated: 2026-08-10_
+_Last updated: 2026-08-11_
 
 ---
 
@@ -184,6 +184,57 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
   `queue.js` (see `memory/sessions/2026-08-10.md` for the repro). See `spec/offline.md` for the full
   design writeup, including what's explicitly out of scope (offline map/
   species browsing beyond cached tiles, edit-after-sync, the Background Sync API).
+- [x] **Added `distanceToRoad` / `distanceToWater` proximity fields** (2026-08-11). Two new Step 3 env
+  fields, following the same auto-fetch + manual-override pattern as the existing nine: `fetchDistanceToRoad()`
+  / `fetchDistanceToWater()` in `environmentApi.js` query OSM via the Overpass API (same public endpoint the
+  existing land-cover fallback already uses), with an expanding search radius (2km → 10km → 50km, since a
+  fixed small radius misses features in sparse rural areas) and a haversine distance to the nearest returned
+  way/relation vertex (an approximation, not the true perpendicular distance to the line, acceptable given
+  typical OSM vertex density). Wired through `fetchEnvironmentData()`/`resolveEnvironment()` (both generic
+  over the `fetched` object, so no special-casing needed), Step 3 UI (two new `EnvItem` cards with the
+  existing edit-pencil override), `koboApi.js` (`distance_to_road_m`/`distance_to_water_m`), `App.jsx`
+  initial form state, Step 5 review rows, and all 4 i18n languages. Deployed Kobo form schema updated via
+  the same `PATCH /api/v2/assets/{uid}/` + `PATCH .../deployment/` pattern as prior field additions (29
+  survey rows now, was 27). Verified two ways: (1) a direct OpenRosa submission with test distance values,
+  confirmed both fields landed via the REST API read-back, then deleted the test record; (2) a full browser
+  click-through of Steps 1–3 against `vite dev`, confirming both new cards render with correct labels/sources
+  and degrade to `—` gracefully on fetch failure (see Known Issues below re: what caused that failure in
+  this run) rather than blocking the form.
+  Motivation: discussion with the PI raised "distance to road" / "distance to water" as commonly-used
+  proximity covariates in habitat/human-footprint literature (alongside elevation and land cover, both of
+  which the app already captures), distinct from the point-in-time weather/soil readings.
+- [x] **Added daily-average companions for all 7 live weather/soil fields** (2026-08-11). When Step 3 uses
+  the live `current` reading (i.e. `collectionDate` is today), `fetchWeather()` now also fetches today's
+  daily aggregate from the Open-Meteo forecast endpoint alongside it (best-effort — wrapped in its own
+  try/catch so a failed companion fetch can't take down the already-successful live reading) and returns
+  both. New `*Daily` fields: `temperatureDaily`, `humidityDaily`, `precipitationDaily`, `windSpeedDaily`,
+  `weatherCodeDaily`, `soilTemperatureDaily`, `soilMoistureDaily`. Only fetched/shown when live (past-date
+  submissions already show a single daily-aggregate value, no separate companion needed). Wired through
+  `fetchEnvironmentData`, 7 new conditional `EnvItem` cards in Step 3 (rendered only when
+  `form.weatherSource === 'current'`), `koboApi.js` (`weather_temperature_daily` etc., inserted right after
+  each live counterpart), `App.jsx` initial form state, Step 5 review rows, and all 4 i18n languages.
+  Deployed Kobo schema updated the same way as prior fields (36 survey rows now, was 29). Verified via a
+  direct OpenRosa test submission with all 7 daily values (confirmed via REST read-back, record deleted) and
+  a full browser click-through — daily values genuinely differ from live ones (e.g. 27.1°C daily vs 26.1°C
+  live), confirming they're real distinct data points, not accidental duplicates.
+  Initial version had a real gap: Soil Temperature/Moisture (Daily) always came back null on the live path,
+  since Open-Meteo's `daily` block has no soil-aggregate variables at all (confirmed directly — the response
+  comes back with unit `"undefined"` and a null value), and the archive endpoint that does have them can't
+  cover "today" due to its 2–7 day processing lag. Fixed same-day by adding `fetchHourlySoilDailyAverage()`:
+  the forecast endpoint's *hourly* soil variables ARE available for today, so the daily mean is now computed
+  client-side from those 24 hourly readings instead of being left null. Verified in-browser (23.9°C / 0.204
+  m³/m³ computed correctly for a real test point). Still degrades to `—` gracefully if this secondary fetch
+  itself fails.
+  Also fixed a semantic inconsistency: `DAILY_VARS` in `environmentApi.js` originally used
+  `temperature_2m_max` for the "Temperature (Daily)" companion (and for the primary Temperature field on
+  past-date submissions), while Soil Temperature/Moisture already used true `_mean` variables — an
+  inconsistent mix of "daily max" and "daily mean" under the same "Daily" framing. Confirmed Open-Meteo
+  exposes `temperature_2m_mean` on both the forecast and archive endpoints and switched to it, updating the
+  `s3_sub_temp_daily` i18n string from "Daily max" to "Daily mean" (all 4 languages) to match. Verified
+  in-browser (23°C daily mean vs 24.5°C live, correct label).
+  Also added `.env-grid` max-height (520px) + internal scroll in `index.css`, since the card count roughly
+  doubled (9 → 18 on a live/today submission) — verified the internal scrollbar reaches the last card
+  (Distance to Water) correctly.
 
 ### In Progress
 (none)
@@ -217,6 +268,18 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
 
 ### Known Issues
 - ESA WorldCover WCS endpoint response format unverified in browser — fallback to OSM Overpass is in place.
+- The public Overpass API (`overpass-api.de`), used by the land-cover fallback and the distance-to-road/
+  distance-to-water fetches, rate-limits/temporarily blocks callers under repeated rapid requests — confirmed
+  first-hand during dev testing on 2026-08-11: a burst of test queries triggered 429s, then outright TCP
+  connection refusal from that IP lasting well over an hour (general internet and every other API used by the
+  app, including a different OSM-related host, kept working fine throughout — confirmed it was specific to
+  that one endpoint, not a broader network problem). A real field researcher submitting occasional records
+  shouldn't trigger this themselves, but it's a shared free public instance with no SLA. Mitigated in
+  `fetchNearestOSMDistance()` (`environmentApi.js`) with a second mirror, `overpass.openstreetmap.fr`, tried
+  automatically if the primary instance is unreachable/blocked (`OVERPASS_ENDPOINTS` array) — verified this
+  fallback actually kicks in and returns correct data while the primary was still blocked. Both distance
+  fetches still fail gracefully (field shows `—`, manual edit-pencil still works, submission isn't blocked)
+  if every endpoint in the list fails, since they're `Promise.allSettled` like the other env fields.
 - `npm run dev` (plain Vite) does not serve `/api/*` — Vercel functions only run when deployed, or locally via
   `vercel dev`. Submit will fail with a 404 under plain `vite dev`; that's expected, not a regression.
 - Only one photo attaches to the Kobo submission even if multiple are uploaded in Step 1 — the Kobo form's
@@ -249,8 +312,12 @@ Form fields (survey, in order): survey_intro (note), record_number (text, option
 identifier, matches Darwin Core recordNumber), species_scientific (text), species_common (text),
 species_taxon_id (integer), preservation_method (select_one: freeze/alcohol/dry), survey_image (image),
 location (geopoint, "lat lon alt acc"), dem_elevation_m (decimal), land_cover_lucc (text),
-weather_temperature (decimal), weather_humidity (decimal), weather_precipitation (decimal),
-weather_wind_speed (decimal), weather_code (integer), soil_temperature (decimal), soil_moisture (decimal),
+weather_temperature (decimal), weather_temperature_daily (decimal), weather_humidity (decimal),
+weather_humidity_daily (decimal), weather_precipitation (decimal), weather_precipitation_daily (decimal),
+weather_wind_speed (decimal), weather_wind_speed_daily (decimal), weather_code (integer),
+weather_code_daily (integer), soil_temperature (decimal), soil_temperature_daily (decimal),
+soil_moisture (decimal), soil_moisture_daily (decimal),
+distance_to_road_m (decimal), distance_to_water_m (decimal),
 env_manual_fields (text — comma-separated list of which env fields above were manually overridden),
 env_fetched_snapshot (text — JSON of all env values as originally fetched, before any manual edit),
 collection_date (date), collector_name/institution/project_name/habitat_description/locality/notes (text),

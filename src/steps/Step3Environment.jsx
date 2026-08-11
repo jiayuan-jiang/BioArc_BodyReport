@@ -145,6 +145,9 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
   const weatherLabel = form.weatherCode != null
     ? (WMO_CODES[form.weatherCode] ?? `Code ${form.weatherCode}`)
     : null
+  const weatherDailyLabel = form.weatherCodeDaily != null
+    ? (WMO_CODES[form.weatherCodeDaily] ?? `Code ${form.weatherCodeDaily}`)
+    : null
 
   // Sub-labels depend on which endpoint actually served the weather values —
   // "current" is a ~15min live reading, "daily" is a day aggregate. Wrong
@@ -230,41 +233,109 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
             manual={manualFields.has('temperature')} manualLabel={t('s3_manual_entry')}
             onEdit={editField('temperature')}
           />
+          {isLive && (
+            <EnvItem
+              label={t('s3_temperature_daily')} unit="°C" sub={t('s3_sub_temp_daily')} loading={loading}
+              value={form.temperatureDaily} displayValue={form.temperatureDaily != null ? `${form.temperatureDaily} °C` : null}
+              manual={manualFields.has('temperatureDaily')} manualLabel={t('s3_manual_entry')}
+              onEdit={editField('temperatureDaily')}
+            />
+          )}
           <EnvItem
             label={t('s3_humidity')} unit="%" sub={subHumidity} loading={loading}
             value={form.humidity} displayValue={form.humidity != null ? `${form.humidity}%` : null}
             manual={manualFields.has('humidity')} manualLabel={t('s3_manual_entry')}
             onEdit={editField('humidity')}
           />
+          {isLive && (
+            <EnvItem
+              label={t('s3_humidity_daily')} unit="%" sub={t('s3_sub_humidity')} loading={loading}
+              value={form.humidityDaily} displayValue={form.humidityDaily != null ? `${form.humidityDaily}%` : null}
+              manual={manualFields.has('humidityDaily')} manualLabel={t('s3_manual_entry')}
+              onEdit={editField('humidityDaily')}
+            />
+          )}
           <EnvItem
             label={t('s3_precipitation')} unit="mm" sub={subPrecip} loading={loading}
             value={form.precipitation} displayValue={form.precipitation != null ? `${form.precipitation} mm` : null}
             manual={manualFields.has('precipitation')} manualLabel={t('s3_manual_entry')}
             onEdit={editField('precipitation')}
           />
+          {isLive && (
+            <EnvItem
+              label={t('s3_precipitation_daily')} unit="mm" sub={t('s3_sub_precip')} loading={loading}
+              value={form.precipitationDaily} displayValue={form.precipitationDaily != null ? `${form.precipitationDaily} mm` : null}
+              manual={manualFields.has('precipitationDaily')} manualLabel={t('s3_manual_entry')}
+              onEdit={editField('precipitationDaily')}
+            />
+          )}
           <EnvItem
             label={t('s3_wind')} unit="km/h" sub={subWind} loading={loading}
             value={form.windSpeed} displayValue={form.windSpeed != null ? `${form.windSpeed} km/h` : null}
             manual={manualFields.has('windSpeed')} manualLabel={t('s3_manual_entry')}
             onEdit={editField('windSpeed')}
           />
+          {isLive && (
+            <EnvItem
+              label={t('s3_wind_daily')} unit="km/h" sub={t('s3_sub_wind')} loading={loading}
+              value={form.windSpeedDaily} displayValue={form.windSpeedDaily != null ? `${form.windSpeedDaily} km/h` : null}
+              manual={manualFields.has('windSpeedDaily')} manualLabel={t('s3_manual_entry')}
+              onEdit={editField('windSpeedDaily')}
+            />
+          )}
           <EnvItem
             label={t('s3_weather')} sub={t('s3_sub_wmo')} loading={loading} type="select" options={wmoOptions}
             value={form.weatherCode} displayValue={weatherLabel}
             manual={manualFields.has('weatherCode')} manualLabel={t('s3_manual_entry')}
             onEdit={editField('weatherCode')}
           />
+          {isLive && (
+            <EnvItem
+              label={t('s3_weather_daily')} sub={t('s3_sub_wmo')} loading={loading} type="select" options={wmoOptions}
+              value={form.weatherCodeDaily} displayValue={weatherDailyLabel}
+              manual={manualFields.has('weatherCodeDaily')} manualLabel={t('s3_manual_entry')}
+              onEdit={editField('weatherCodeDaily')}
+            />
+          )}
           <EnvItem
             label={t('s3_soil_temp')} unit="°C" sub={subSoil} loading={loading}
             value={form.soilTemperature} displayValue={form.soilTemperature != null ? `${form.soilTemperature} °C` : null}
             manual={manualFields.has('soilTemperature')} manualLabel={t('s3_manual_entry')}
             onEdit={editField('soilTemperature')}
           />
+          {isLive && (
+            <EnvItem
+              label={t('s3_soil_temp_daily')} unit="°C" sub={t('s3_sub_soil_temp')} loading={loading}
+              value={form.soilTemperatureDaily} displayValue={form.soilTemperatureDaily != null ? `${form.soilTemperatureDaily} °C` : null}
+              manual={manualFields.has('soilTemperatureDaily')} manualLabel={t('s3_manual_entry')}
+              onEdit={editField('soilTemperatureDaily')}
+            />
+          )}
           <EnvItem
             label={t('s3_soil_moisture')} unit="m³/m³" sub={subSoilMoist} loading={loading}
             value={form.soilMoisture} displayValue={form.soilMoisture != null ? `${form.soilMoisture} m³/m³` : null}
             manual={manualFields.has('soilMoisture')} manualLabel={t('s3_manual_entry')}
             onEdit={editField('soilMoisture')}
+          />
+          {isLive && (
+            <EnvItem
+              label={t('s3_soil_moisture_daily')} unit="m³/m³" sub={t('s3_sub_soil_moisture')} loading={loading}
+              value={form.soilMoistureDaily} displayValue={form.soilMoistureDaily != null ? `${form.soilMoistureDaily} m³/m³` : null}
+              manual={manualFields.has('soilMoistureDaily')} manualLabel={t('s3_manual_entry')}
+              onEdit={editField('soilMoistureDaily')}
+            />
+          )}
+          <EnvItem
+            label={t('s3_distance_road')} unit="m" sub={t('s3_sub_distance_road')} loading={loading}
+            value={form.distanceToRoad} displayValue={form.distanceToRoad != null ? `${form.distanceToRoad} m` : null}
+            manual={manualFields.has('distanceToRoad')} manualLabel={t('s3_manual_entry')}
+            onEdit={editField('distanceToRoad')}
+          />
+          <EnvItem
+            label={t('s3_distance_water')} unit="m" sub={t('s3_sub_distance_water')} loading={loading}
+            value={form.distanceToWater} displayValue={form.distanceToWater != null ? `${form.distanceToWater} m` : null}
+            manual={manualFields.has('distanceToWater')} manualLabel={t('s3_manual_entry')}
+            onEdit={editField('distanceToWater')}
           />
         </div>
 
@@ -287,6 +358,14 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
             <li>
               ESA WorldCover v200 (2021). <em>10m global land cover classification.</em>{' '}
               <a href="https://esa-worldcover.org/" target="_blank" rel="noopener noreferrer">esa-worldcover.org</a>
+            </li>
+            <li>
+              OpenStreetMap via Overpass API. <em>Nearest road and water body distance, and land cover fallback if ESA WorldCover is unavailable.</em>{' '}
+              <a href="https://overpass-api.de/" target="_blank" rel="noopener noreferrer">overpass-api.de</a>
+            </li>
+            <li>
+              OpenStreetMap via Nominatim. <em>Land cover fallback if both ESA WorldCover and Overpass are unavailable.</em>{' '}
+              <a href="https://nominatim.org/" target="_blank" rel="noopener noreferrer">nominatim.org</a>
             </li>
           </ol>
         </div>
