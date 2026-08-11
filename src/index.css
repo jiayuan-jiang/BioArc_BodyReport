@@ -365,6 +365,35 @@ html, body, #root {
   letter-spacing: -0.3px;
 }
 
+.card-header-refetch-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition), color var(--transition);
+}
+
+.card-header-refetch-btn:hover:not(:disabled) {
+  background: var(--green-light);
+  color: var(--green-primary);
+}
+
+.card-header-refetch-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.card-header-refetch-btn svg.spinning { animation: spin 1s linear infinite; }
+
 .card-header-text p {
   font-size: 13px;
   color: var(--text-muted);

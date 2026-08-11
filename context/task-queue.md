@@ -54,6 +54,12 @@ Format: `[priority] Task title. Spec pointer`
 
 ## Done
 
+- [x] **[MEDIUM] Manual refetch icon for Step 3 environmental data** (2026-08-11)
+  Fixes a real gap: correcting GPS in Step 2 and returning to Step 3 previously couldn't pull fresh env
+  data (the auto-fetch effect only runs once on mount). Added a refetch icon button in the Step 3 header.
+  Also fixed `runFetch()` clobbering manually-entered field values on refetch — now preserves them.
+  → `context/state.md`, `memory/sessions/2026-08-11.md`
+
 - [x] **[MEDIUM] Daily-average companions for live weather/soil fields** (2026-08-11)
   When Step 3 shows a live (`current`) weather reading, it now also fetches and shows today's daily
   aggregate alongside each of the 7 live fields (temperature, humidity, precipitation, wind, weather, soil

@@ -235,6 +235,20 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
   Also added `.env-grid` max-height (520px) + internal scroll in `index.css`, since the card count roughly
   doubled (9 → 18 on a live/today submission) — verified the internal scrollbar reaches the last card
   (Distance to Water) correctly.
+- [x] **Manual refetch icon for environmental data** (2026-08-11). Motivating case: GPS accuracy in Step 2
+  can be off, and if a researcher goes back to correct it, Step 3's auto-fetch `useEffect` only runs once
+  on mount (`if (form.elevation !== null) return` guard) — there was previously no way to pull fresh env
+  data for the corrected coordinates without a page reload. Added a small circular-arrow icon button
+  (`.card-header-refetch-btn`) in the top-right of the Step 3 card header, visible whenever a location is
+  set and the form isn't idle, calling the same `runFetch()` used internally. Spins while loading, disabled
+  during fetch.
+  Also fixed a real bug this surfaced: `runFetch()` previously did an unconditional
+  `update({ ...fetched, ... })`, which would have silently clobbered any manually-entered field
+  (`form.manualEnvFields`) on a refetch. Fixed by merging the freshly fetched values with the existing form,
+  keeping the manual value for any field the researcher already overrode — `envFetchedSnapshot` still
+  captures the true as-fetched value regardless, so nothing is lost either way. Verified in-browser:
+  manually set Elevation to a distinctive test value, clicked refetch, confirmed Elevation stayed manually
+  overridden while Temperature/Humidity/etc. all refreshed with new live values.
 
 ### In Progress
 (none)

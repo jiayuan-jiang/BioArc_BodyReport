@@ -109,10 +109,21 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
     // queue instead of silently submitting with every env field blank.
     const totalFailure = fetched.elevation == null && fetched.temperature == null && fetched.landCover == null
 
+    // A refetch (e.g. after correcting GPS back in Step 2) should update the
+    // auto-fetched fields without clobbering a researcher's own manually
+    // entered reading — the snapshot below still keeps the raw fetched value
+    // either way, so nothing is lost, but the displayed/stored field respects
+    // the manual override.
+    const manualSet = new Set(form.manualEnvFields)
+    const merged = { ...fetched }
+    for (const key of Object.keys(merged)) {
+      if (manualSet.has(key)) merged[key] = form[key]
+    }
+
     // Snapshot the as-fetched values before any manual edits can happen —
     // kept in the submission even if the fields below get overridden, so
     // the model's original output is never silently lost.
-    update({ ...fetched, weatherSource, envFetchedSnapshot: { ...fetched, weatherSource }, envFetchPending: totalFailure })
+    update({ ...merged, weatherSource, envFetchedSnapshot: { ...fetched, weatherSource }, envFetchPending: totalFailure })
     setStatus(totalFailure ? 'deferred' : 'done')
   }
 
@@ -172,6 +183,20 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
           <h2>{t('s3_title')}</h2>
           <p>{t('s3_subtitle')}</p>
         </div>
+        {hasLocation && status !== 'idle' && (
+          <button
+            type="button"
+            className="card-header-refetch-btn"
+            onClick={runFetch}
+            disabled={loading}
+            title={t('s3_refetch')}
+            aria-label={t('s3_refetch')}
+          >
+            <svg className={loading ? 'spinning' : ''} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>
+            </svg>
+          </button>
+        )}
       </div>
 
       <div className="card-body">
