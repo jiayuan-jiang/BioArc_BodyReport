@@ -191,21 +191,26 @@ export async function fetchLandCover(lat, lng) {
 }
 
 async function fetchLandCoverOSM(lat, lng) {
+  const endpoint = 'https://overpass-api.de/api/interpreter'
   const query = `[out:json][timeout:10];(way[landuse](around:300,${lat},${lng});relation[landuse](around:300,${lat},${lng});way["natural"](around:300,${lat},${lng}););out tags 1;`
-  try {
-    const res = await fetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `data=${encodeURIComponent(query)}`,
-      signal: AbortSignal.timeout(12000),
-    })
-    if (res.ok && (res.headers.get('content-type') || '').includes('json')) {
-      const data = await res.json()
-      const tags = data.elements?.[0]?.tags
-      const tag = tags?.landuse || tags?.natural
-      if (tag) return tag.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-    }
-  } catch { /* fall through to Nominatim */ }
+  if (!deadOverpassEndpoints.has(endpoint)) {
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: AbortSignal.timeout(12000),
+      })
+      if (res.ok && (res.headers.get('content-type') || '').includes('json')) {
+        const data = await res.json()
+        const tags = data.elements?.[0]?.tags
+        const tag = tags?.landuse || tags?.natural
+        if (tag) return tag.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+      } else {
+        deadOverpassEndpoints.add(endpoint)
+      }
+    } catch { deadOverpassEndpoints.add(endpoint) }
+  }
 
   return fetchLandCoverNominatim(lat, lng)
 }
@@ -284,15 +289,32 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.asin(Math.sqrt(a))
 }
 
-// Public Overpass instances to try, in order. overpass-api.de is the main
-// instance but is a shared free resource that rate-limits/temporarily blocks
-// callers under repeated rapid requests (observed directly during dev
-// testing); openstreetmap.fr mirrors the same data and is tried next if the
-// main instance is unreachable or blocked for this client.
+// Public Overpass instances to try, in order. openstreetmap.fr is listed
+// first: overpass-api.de (the more commonly referenced instance) was
+// confirmed unreachable at the TCP level from four independent networks
+// during testing (2026-08-12) — not a per-client rate limit, since even a
+// WebFetch call routed through unrelated infrastructure couldn't connect —
+// while openstreetmap.fr answered normally throughout. Trying a dead host
+// first wastes a full connection-timeout on every single fetch, so the
+// working one goes first; overpass-api.de is kept as a fallback in case it
+// recovers.
 const OVERPASS_ENDPOINTS = [
-  'https://overpass-api.de/api/interpreter',
   'https://overpass.openstreetmap.fr/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
 ]
+
+// Module-level, not per-call: once an endpoint fails outright (network error
+// or bad response, as opposed to a valid response with no matches), it's
+// skipped for the rest of the page session instead of being retried at every
+// radius tier. distance-to-road and distance-to-water run concurrently and
+// each retries across 3 radii, so without this a single dead endpoint could
+// draw a dozen-plus requests from one env-data fetch alone — enough to trip
+// the free public mirror's own rate limiting too (observed directly: a burst
+// of testing against overpass-api.de got it blocked, then the same retry
+// pattern against the openstreetmap.fr fallback started drawing CORS errors
+// consistent with its rate limiter dropping CORS headers on throttled
+// responses, even though the endpoint's CORS config is otherwise correct).
+const deadOverpassEndpoints = new Set()
 
 // Distance to the nearest OSM feature matching the statements `buildStatements`
 // produces, via Overpass's `around` search with an expanding radius (a fixed
@@ -306,6 +328,7 @@ async function fetchNearestOSMDistance(lat, lng, buildStatements) {
   for (const radius of radii) {
     const query = `[out:json][timeout:15];(${buildStatements(radius, lat, lng)});out geom 30;`
     for (const endpoint of OVERPASS_ENDPOINTS) {
+      if (deadOverpassEndpoints.has(endpoint)) continue
       try {
         const res = await fetch(endpoint, {
           method: 'POST',
@@ -313,7 +336,10 @@ async function fetchNearestOSMDistance(lat, lng, buildStatements) {
           body: `data=${encodeURIComponent(query)}`,
           signal: AbortSignal.timeout(15000),
         })
-        if (!res.ok || !(res.headers.get('content-type') || '').includes('json')) continue
+        if (!res.ok || !(res.headers.get('content-type') || '').includes('json')) {
+          deadOverpassEndpoints.add(endpoint)
+          continue
+        }
         const data = await res.json()
 
         let minDist = Infinity
@@ -327,7 +353,7 @@ async function fetchNearestOSMDistance(lat, lng, buildStatements) {
         }
         if (minDist < Infinity) return Math.round(minDist)
         break // this endpoint answered but found nothing at this radius — escalate radius, don't also ask the other endpoint the same question
-      } catch { /* try the next endpoint */ }
+      } catch { deadOverpassEndpoints.add(endpoint) }
     }
   }
   return null

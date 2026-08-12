@@ -292,18 +292,25 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
 
 ### Known Issues
 - ESA WorldCover WCS endpoint response format unverified in browser — fallback to OSM Overpass is in place.
-- The public Overpass API (`overpass-api.de`), used by the land-cover fallback and the distance-to-road/
-  distance-to-water fetches, rate-limits/temporarily blocks callers under repeated rapid requests — confirmed
-  first-hand during dev testing on 2026-08-11: a burst of test queries triggered 429s, then outright TCP
-  connection refusal from that IP lasting well over an hour (general internet and every other API used by the
-  app, including a different OSM-related host, kept working fine throughout — confirmed it was specific to
-  that one endpoint, not a broader network problem). A real field researcher submitting occasional records
-  shouldn't trigger this themselves, but it's a shared free public instance with no SLA. Mitigated in
-  `fetchNearestOSMDistance()` (`environmentApi.js`) with a second mirror, `overpass.openstreetmap.fr`, tried
-  automatically if the primary instance is unreachable/blocked (`OVERPASS_ENDPOINTS` array) — verified this
-  fallback actually kicks in and returns correct data while the primary was still blocked. Both distance
-  fetches still fail gracefully (field shows `—`, manual edit-pencil still works, submission isn't blocked)
-  if every endpoint in the list fails, since they're `Promise.allSettled` like the other env fields.
+- `overpass-api.de` (used by the land-cover fallback and the distance-to-road/distance-to-water fetches) has
+  been unreachable at the TCP level (`ERR_CONNECTION_REFUSED`) since 2026-08-11. Initially attributed this to
+  our own IP getting rate-limited by rapid dev testing — that diagnosis was **wrong, or at least incomplete**:
+  confirmed unreachable independently from four separate networks (dev machine, two different real user
+  devices, and a WebFetch call routed through unrelated infrastructure), while `overpass.openstreetmap.fr`
+  answered normally from all of them. TCP-level connection refusal from that many independent vantage points
+  is far more consistent with an outage/issue on `overpass-api.de`'s side than a per-client rate limit
+  (rate limiting normally still accepts the connection and returns HTTP 429, not a refused connection).
+  Mitigated in `environmentApi.js`: `OVERPASS_ENDPOINTS` now lists `overpass.openstreetmap.fr` **first**
+  (the one actually reachable) with `overpass-api.de` kept second in case it recovers, and
+  `deadOverpassEndpoints` (module-level `Set`) marks an endpoint bad after its first failure within a page
+  session so it isn't retried at every radius tier on every subsequent fetch — the original design retried
+  a dead endpoint fresh at each of 3 radii, for both distance-to-road and distance-to-water concurrently,
+  which was drawing enough repeat traffic at the working mirror to occasionally trip its own rate limiting
+  too (its CORS headers are correctly configured — confirmed directly — so the CORS errors seen were almost
+  certainly its rate limiter dropping those headers on throttled responses, not a real misconfiguration).
+  Verified in-browser after the fix: full env fetch (including both distance fields) resolved noticeably
+  faster and both fields returned correct values. Both distance fetches still fail gracefully (field shows
+  `—`, manual edit-pencil still works, submission isn't blocked) if every endpoint fails.
 - `npm run dev` (plain Vite) does not serve `/api/*` — Vercel functions only run when deployed, or locally via
   `vercel dev`. Submit will fail with a 404 under plain `vite dev`; that's expected, not a regression.
 - Only one photo attaches to the Kobo submission even if multiple are uploaded in Step 1 — the Kobo form's
