@@ -356,6 +356,16 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
   specifically (`overpass.osm.ch` connects fine and has correct CORS headers but returns **zero elements**
   even for a landmark guaranteed to have nearby roads — its dataset is empty/broken, confirmed directly, not
   a viable addition) — no better free alternative found.
+- **Fourth follow-up (same day):** user re-tested and it still failed. Tested the real deployed site directly
+  again rather than re-explaining — network log showed `overpass.openstreetmap.fr` back to a clean 503, and a
+  fresh curl sweep a few seconds later showed it had already flipped back to 200 (confirming real, rapid
+  load-driven fluctuation, not a persistent outage) — but also turned up a genuinely new, independently
+  verified working mirror: `maps.mail.ru/osm/tools/overpass/api/interpreter` (correct CORS headers, real
+  non-empty data, supports the named-set query syntax this app uses). Added it as `OVERPASS_ENDPOINTS[1]`, so
+  a 503 on the primary now has somewhere else to go *within the same fetch* instead of only the 60s cooldown
+  retry. This is a second endpoint added on real new evidence (an endpoint that wasn't reachable at test time
+  earlier in the day came up later — network conditions for free mirrors are genuinely time-varying, worth
+  re-checking rather than treating an earlier "unreachable" result as permanent).
 - **Land cover source mislabeling, found and fixed while investigating the above** (2026-08-12). The Land
   Cover card's sub-label was a hardcoded `"ESA WorldCover 2021"` string regardless of which tier of the
   fallback chain (WCS → Overpass → Nominatim) actually supplied the value — confirmed live on production that

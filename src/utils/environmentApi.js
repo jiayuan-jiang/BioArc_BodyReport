@@ -296,21 +296,24 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.asin(Math.sqrt(a))
 }
 
-// Public Overpass instances to try, in order. openstreetmap.fr is listed
-// only: overpass-api.de (the more commonly referenced instance) was
-// confirmed unreachable at the TCP level from four independent networks
-// during testing (2026-08-12) — not a per-client rate limit, since even a
-// WebFetch call routed through unrelated infrastructure couldn't connect —
-// and showed no sign of recovering over multiple days. Keeping it in the
-// list as a "fallback" cost a full guaranteed-fail connection attempt on
-// every request where openstreetmap.fr also had a blip, for zero benefit.
-// Dropped entirely rather than reordered. Re-add it (or another public
-// mirror) if openstreetmap.fr itself becomes unreliable long-term — a few
-// other candidates (kumi.systems, monicz.dev, private.coffee) were tried
-// directly and were themselves slow/unreachable at the time, so they
-// weren't an improvement.
+// Public Overpass instances to try, in order. overpass-api.de was dropped
+// entirely (confirmed unreachable at the TCP level from four independent
+// networks with no sign of recovering over multiple days, so it was pure
+// dead weight as a "fallback"). openstreetmap.fr is otherwise healthy but a
+// small community server — confirmed directly (via real network requests on
+// the deployed site, twice) that it intermittently returns a clean HTTP 503
+// under its own load, not a connection failure. maps.mail.ru is a second,
+// independently-verified working mirror (correct CORS headers, real non-
+// empty data, supports the named-set query syntax below) added specifically
+// so a 503 on the first has somewhere else to go within the same fetch
+// instead of waiting out the 60s cooldown. Other candidates tried directly
+// and ruled out: kumi.systems/monicz.dev/private.coffee (unreachable at
+// test time), overpass.osm.ch (reachable, correct CORS, but returns zero
+// elements even for landmarks guaranteed to have nearby roads — broken/
+// stale dataset).
 const OVERPASS_ENDPOINTS = [
   'https://overpass.openstreetmap.fr/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ]
 
 // Module-level, not per-call: once an endpoint fails outright (network error
