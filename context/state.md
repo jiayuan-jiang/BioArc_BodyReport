@@ -18,6 +18,7 @@ _Last updated: 2026-08-11_
 | Distance to road API | Mapbox Tilequery | free tier (100k/mo), needs `VITE_MAPBOX_TOKEN` |
 | Distance to water API | OSM Overpass (`.fr` + `maps.mail.ru` mirrors) | free, no key |
 | PWA / offline | vite-plugin-pwa (Workbox `generateSW`) + IndexedDB local queue | ^1.3.0, new 2026-08-10 |
+| HEIC/HEIF photo decode | heic-to (WASM libheif, dynamic-imported only when a HEIC file is picked) | ^1.5.2, new 2026-08-12 |
 | Testing | Vitest + React Testing Library (jsdom) | new 2026-08-12, devDependency only, `npm test` |
 | Deployment | Vercel (auto-deploy via GitHub App, live) | https://bioarc.vercel.app |
 | Hosting repo | GitHub — jiayuan-jiang/BioArc_BodyReport | — |
@@ -304,6 +305,21 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
   to 4 bytes with `naturalWidth`/`naturalHeight` both 0, then isolated it to the bare `[file].map(compressImage)`
   call outside React entirely. Fixed with `valid.map(f => compressImage(f))`. Verified in-browser after the
   fix: same file now produces a correct 800×600 / 3609-byte blob and renders in the thumbnail grid.
+- **Fixed (2026-08-12): HEIC photos from an iPhone camera roll never actually worked**, despite the UI
+  advertising "JPG, PNG, HEIC" (`design/ui-card-spec.md`, `content-spec.md`, `s1_drop_hint`). Two separate
+  bugs, both confirmed live in-browser with a real .heic file: (1) `file.type` for a HEIC file comes back as
+  `application/octet-stream` in Chrome, not `image/heic`, so the `f.type.startsWith('image/')` filter in
+  `handleFiles` silently dropped it before it ever reached `compressImage`; widened the filter to also match
+  `/\.hei[cf]$/i` on the filename. (2) Chromium has no built-in HEIC/HEIF decoder at all —
+  `createImageBitmap(heicFile)` throws `InvalidStateError: The source image could not be decoded` directly
+  (confirmed; Safari is the only engine with native HEIC decode). Added `heic-to` (WASM libheif) as a fallback
+  in a new `decodeToBitmap()`: try `createImageBitmap` first, and only on failure dynamic-`import('heic-to')`
+  and convert to JPEG first, keeping the ~3MB decoder out of the main bundle and fetched only when a HEIC file
+  is actually picked. Also switched `handleFiles` from `Promise.all` to `Promise.allSettled` so one
+  undecodable file (corrupt upload, unsupported format) no longer silently kills every other photo in the same
+  batch; failures are now skipped individually and surface `s1_err_photo_decode` to the user. Verified
+  in-browser: a real HEIC file now compresses correctly (800×600 / 3609-byte JPEG), and a deliberately corrupt
+  file in a mixed batch gets skipped with the JPG next to it still succeeding.
 - ESA WorldCover WCS endpoint response format unverified in browser — fallback to OSM Overpass is in place.
 - `overpass-api.de` (used by the land-cover fallback and the distance-to-road/distance-to-water fetches) has
   been unreachable at the TCP level (`ERR_CONNECTION_REFUSED`) since 2026-08-11. Initially attributed this to

@@ -17,11 +17,25 @@ async function fetchSpeciesSuggestions(query, signal) {
   }))
 }
 
+// No browser other than Safari can decode HEIC/HEIF natively, so createImageBitmap()
+// throws on it directly. heic-to wraps a WASM build of libheif for that case — loaded
+// via dynamic import so it's only fetched when a HEIC file actually shows up, not as
+// part of the main bundle.
+async function decodeToBitmap(file) {
+  try {
+    return await createImageBitmap(file)
+  } catch {
+    const { heicTo } = await import('heic-to')
+    const jpeg = await heicTo({ blob: file, type: 'image/jpeg', quality: 0.92 })
+    return await createImageBitmap(jpeg)
+  }
+}
+
 // Resizes to a max 1280px edge and re-encodes as JPEG @ 75% quality — visibly
 // sharp on screen but a fraction of a raw phone photo's size, since Kobo's free
 // storage tier is the actual bottleneck (1GB, not the 5000/month submission cap).
 async function compressImage(file, maxDim = 1280, quality = 0.75) {
-  const bitmap = await createImageBitmap(file)
+  const bitmap = await decodeToBitmap(file)
   const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height))
   const w = Math.round(bitmap.width * scale)
   const h = Math.round(bitmap.height * scale)
@@ -45,6 +59,7 @@ export default function Step1Specimen({ form, update, onNext }) {
   const [fetchError, setFetchError] = useState(false)
   const [dragging, setDragging]     = useState(false)
   const [errors, setErrors]         = useState({})
+  const [photoError, setPhotoError] = useState(false)
   const fileRef      = useRef()
   const debounceRef  = useRef()
   const abortRef     = useRef()
@@ -108,9 +123,15 @@ export default function Step1Specimen({ form, update, onNext }) {
   }
 
   const handleFiles = async (files) => {
-    const valid = Array.from(files).filter(f => f.type.startsWith('image/'))
-    const compressed = await Promise.all(valid.map(f => compressImage(f)))
-    const previews = compressed.map(f => ({ file: f, url: URL.createObjectURL(f), name: f.name }))
+    // file.type is unreliable for HEIC — Chrome reports it as application/octet-stream
+    // rather than image/heic, so a photo picked straight from an iPhone's camera roll
+    // would otherwise get silently dropped here before it ever reaches compressImage.
+    const valid = Array.from(files).filter(f => f.type.startsWith('image/') || /\.hei[cf]$/i.test(f.name))
+    const results = await Promise.allSettled(valid.map(f => compressImage(f)))
+    const previews = results
+      .filter(r => r.status === 'fulfilled')
+      .map(r => ({ file: r.value, url: URL.createObjectURL(r.value), name: r.value.name }))
+    setPhotoError(results.some(r => r.status === 'rejected'))
     update({ photos: [...form.photos, ...previews] })
   }
 
@@ -227,6 +248,7 @@ export default function Step1Specimen({ form, update, onNext }) {
             <p>{t('s1_drop_hint')}</p>
             <input ref={fileRef} type="file" accept="image/*" multiple onChange={e => handleFiles(e.target.files)} />
           </div>
+          {photoError && <span className="field-error">{t('s1_err_photo_decode')}</span>}
           {form.photos.length > 0 && (
             <div className="photo-thumbnails" style={{ marginTop: 8 }}>
               {form.photos.map((p, i) => (

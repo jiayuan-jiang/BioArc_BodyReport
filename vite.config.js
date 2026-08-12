@@ -35,6 +35,12 @@ export default defineConfig({
         // are deliberately NOT cached here — offline handling for those goes
         // through the app-level queue in src/offline/, not stale SW cache.
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        // Default cap is 2 MiB; the lazy-loaded HEIC decoder chunk (heic-to, WASM
+        // libheif) alone is ~3MB unminified. It's fetched at runtime only when a
+        // HEIC photo is actually picked, but still needs precaching like the rest
+        // of the app shell so that first HEIC upload also works with zero network
+        // in the field, not just JPG/PNG.
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/[abc]\.tile\.openstreetmap\.org\/.*/,
