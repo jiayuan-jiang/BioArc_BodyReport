@@ -193,7 +193,7 @@ export async function fetchLandCover(lat, lng) {
 async function fetchLandCoverOSM(lat, lng) {
   const endpoint = 'https://overpass-api.de/api/interpreter'
   const query = `[out:json][timeout:10];(way[landuse](around:300,${lat},${lng});relation[landuse](around:300,${lat},${lng});way["natural"](around:300,${lat},${lng}););out tags 1;`
-  if (!deadOverpassEndpoints.has(endpoint)) {
+  if (!isOverpassEndpointDead(endpoint)) {
     try {
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -207,9 +207,9 @@ async function fetchLandCoverOSM(lat, lng) {
         const tag = tags?.landuse || tags?.natural
         if (tag) return tag.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
       } else {
-        deadOverpassEndpoints.add(endpoint)
+        markOverpassEndpointDead(endpoint)
       }
-    } catch { deadOverpassEndpoints.add(endpoint) }
+    } catch { markOverpassEndpointDead(endpoint) }
   }
 
   return fetchLandCoverNominatim(lat, lng)
@@ -304,16 +304,27 @@ const OVERPASS_ENDPOINTS = [
 
 // Module-level, not per-call: once an endpoint fails outright (network error
 // or bad response, as opposed to a valid response with no matches), it's
-// skipped for the rest of the page session instead of being retried at every
-// radius tier. Without this a single dead endpoint could still draw several
-// requests from one env-data fetch (up to 3 radii) — road and water distance
-// used to be two separate concurrently-retried queries, doubling that; now
-// merged into one combined query (below) specifically because that doubled,
-// bursty request volume was very likely tripping the free public mirror's
-// own rate limiting too (observed directly: CORS errors against an endpoint
-// whose CORS config is otherwise correctly set up, consistent with its
-// limiter dropping CORS headers on throttled responses).
-const deadOverpassEndpoints = new Set()
+// skipped for a cooldown window instead of being retried at every radius
+// tier. Deliberately a cooldown (Map of endpoint -> retry-after timestamp),
+// not a permanent-for-the-session flag: a working endpoint that has one
+// transient blip (momentary overload, a single timeout) would otherwise stay
+// marked dead for the rest of the page's lifetime even after it recovers,
+// forcing every subsequent fetch onto whatever's left — which, with
+// overpass-api.de down for an extended period (see Known Issues), could mean
+// permanent nulls for the rest of a session from one bad moment. 60s balances
+// not hammering a genuinely dead host against giving a flaky one a real
+// chance to recover within the same session.
+const OVERPASS_COOLDOWN_MS = 60_000
+const overpassRetryAfter = new Map()
+
+function isOverpassEndpointDead(endpoint) {
+  const retryAfter = overpassRetryAfter.get(endpoint)
+  return retryAfter != null && Date.now() < retryAfter
+}
+
+function markOverpassEndpointDead(endpoint) {
+  overpassRetryAfter.set(endpoint, Date.now() + OVERPASS_COOLDOWN_MS)
+}
 
 // Fetches distance-to-road and distance-to-water in a single combined query
 // (road and water elements tagged distinctly via `out tags geom`, split back
@@ -349,7 +360,7 @@ async function fetchRoadWaterDistances(lat, lng) {
       `.roads out tags geom 30;` +
       `.water out tags geom 30;`
     for (const endpoint of OVERPASS_ENDPOINTS) {
-      if (deadOverpassEndpoints.has(endpoint)) continue
+      if (isOverpassEndpointDead(endpoint)) continue
       try {
         const res = await fetch(endpoint, {
           method: 'POST',
@@ -358,7 +369,7 @@ async function fetchRoadWaterDistances(lat, lng) {
           signal: AbortSignal.timeout(15000),
         })
         if (!res.ok || !(res.headers.get('content-type') || '').includes('json')) {
-          deadOverpassEndpoints.add(endpoint)
+          markOverpassEndpointDead(endpoint)
           continue
         }
         const data = await res.json()
@@ -381,7 +392,7 @@ async function fetchRoadWaterDistances(lat, lng) {
         if (distanceToRoad == null && minRoad < Infinity) distanceToRoad = Math.round(minRoad)
         if (distanceToWater == null && minWater < Infinity) distanceToWater = Math.round(minWater)
         break // this endpoint answered — escalate radius (if still missing something), don't also ask the other endpoint
-      } catch { deadOverpassEndpoints.add(endpoint) }
+      } catch { markOverpassEndpointDead(endpoint) }
     }
   }
   return { distanceToRoad, distanceToWater }

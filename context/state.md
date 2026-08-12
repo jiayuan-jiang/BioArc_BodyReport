@@ -320,6 +320,17 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
   each category gets its own guaranteed slice regardless of how many roads exist nearby — confirmed via curl
   (60/60 all-roads before the fix, 30 roads + 30 water after) and re-verified in-browser (both fields
   correct again: 127 m road, 921 m water for the same test point).
+  **Second follow-up (same day):** user reported the fields *still* not resolving even after the above two
+  fixes, on a fresh deployment confirmed (via direct inspection of the live JS bundle) to actually contain
+  both fixes. Found a third, real design gap: `deadOverpassEndpoints` marked an endpoint dead for the entire
+  page session on its first failure, with no expiry. Since `overpass-api.de` is expected to fail every time
+  right now, that's fine for it — but if `overpass.openstreetmap.fr` (the only working endpoint) had even one
+  transient blip anywhere in a session, it would get marked dead for the rest of that session too, and with
+  both endpoints then "dead," every subsequent fetch (including a manual refetch click) would return null
+  until the page was fully reloaded. Replaced the permanent `Set` with a `Map` of endpoint → retry-after
+  timestamp (`isOverpassEndpointDead()` / `markOverpassEndpointDead()`, 60s cooldown) so a transient failure
+  only costs a short window, not the rest of the session, while a genuinely dead host (like `overpass-api.de`
+  right now) still isn't hammered on every radius tier. Verified in-browser again after this change.
 - `npm run dev` (plain Vite) does not serve `/api/*` — Vercel functions only run when deployed, or locally via
   `vercel dev`. Submit will fail with a 404 under plain `vite dev`; that's expected, not a regression.
 - Only one photo attaches to the Kobo submission even if multiple are uploaded in Step 1 — the Kobo form's
