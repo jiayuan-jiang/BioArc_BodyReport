@@ -366,6 +366,23 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
   retry. This is a second endpoint added on real new evidence (an endpoint that wasn't reachable at test time
   earlier in the day came up later — network conditions for free mirrors are genuinely time-varying, worth
   re-checking rather than treating an earlier "unreachable" result as permanent).
+  Verifying this fix surfaced a real, separate, more significant bug: a *brand-new browser tab*, on a fresh
+  navigation to `bioarc.vercel.app` with no manual caching involved, was found running a JS bundle from the
+  *previous* deploy — confirmed directly via `document.scripts` showing an old asset hash. Root cause: with
+  `registerType: 'autoUpdate'`, vite-plugin-pwa's default auto-injected `registerSW.js` only calls
+  `navigator.serviceWorker.register()` — it never listens for `controllerchange` or reloads the page once a
+  new service worker actually takes over. The generated `sw.js` itself does call `skipWaiting()` +
+  `clientsClaim()` correctly, so a new version *does* install and take control in the background, but nothing
+  ever prompted the already-loaded page (or any origin visit that happened to load before that takeover
+  finished) to pick up the fresh JS — a deploy could sit installed-but-invisible on a given tab/device
+  indefinitely. **This plausibly explains a real portion of the "I fixed it but you still can't see it"
+  pattern across this entire debugging thread**, independent of every other issue found and fixed above.
+  Fixed the standard way: `injectRegister: false` in `vite.config.js` (stop generating the bare script),
+  and `registerSW({ immediate: true })` from the `virtual:pwa-register` module in `src/main.jsx` instead —
+  per vite-plugin-pwa's own docs, this reloads the page automatically once a new service worker activates
+  when no `onNeedRefresh` callback is given, matching `autoUpdate`'s intent end-to-end instead of only
+  half-implementing it. Verified via `vite preview`: service worker registers and activates with no console
+  errors, app renders normally.
 - **Land cover source mislabeling, found and fixed while investigating the above** (2026-08-12). The Land
   Cover card's sub-label was a hardcoded `"ESA WorldCover 2021"` string regardless of which tier of the
   fallback chain (WCS → Overpass → Nominatim) actually supplied the value — confirmed live on production that

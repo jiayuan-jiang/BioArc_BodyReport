@@ -7,6 +7,12 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Registered manually in main.jsx via virtual:pwa-register instead —
+      // the auto-injected registerSW.js script never reloads the page when a
+      // new service worker takes over, so updates could sit installed but
+      // invisible indefinitely. injectRegister: false skips generating/
+      // injecting that script to avoid double-registering.
+      injectRegister: false,
       includeAssets: ['icon.svg', 'apple-touch-icon.png', 'favicon-32.png'],
       manifest: {
         name: 'BioARC — Specimen Collection',
