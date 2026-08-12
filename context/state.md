@@ -18,6 +18,7 @@ _Last updated: 2026-08-11_
 | Distance to road API | Mapbox Tilequery | free tier (100k/mo), needs `VITE_MAPBOX_TOKEN` |
 | Distance to water API | OSM Overpass (`.fr` + `maps.mail.ru` mirrors) | free, no key |
 | PWA / offline | vite-plugin-pwa (Workbox `generateSW`) + IndexedDB local queue | ^1.3.0, new 2026-08-10 |
+| Testing | Vitest + React Testing Library (jsdom) | new 2026-08-12, devDependency only, `npm test` |
 | Deployment | Vercel (auto-deploy via GitHub App, live) | https://bioarc.vercel.app |
 | Hosting repo | GitHub — jiayuan-jiang/BioArc_BodyReport | — |
 
@@ -294,6 +295,15 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
 - [ ] Multi-language UI — form already has EN/ES/FR/PT in KoboToolbox; React app is English only
 
 ### Known Issues
+- **Fixed (2026-08-12): every uploaded photo showed as a broken image.** `Step1Specimen.jsx`'s `handleFiles`
+  called `valid.map(compressImage)` — the classic `map` gotcha where the callback also receives `(index, array)`
+  as extra arguments, which landed in `compressImage(file, maxDim = 1280, quality = 0.75)`'s `maxDim` and
+  `quality` parameters. The first file in any batch got `maxDim = 0`, forcing `scale = 0` and a 0×0 canvas;
+  `canvas.toBlob` on a 0×0 canvas resolves with a ~4-byte stub blob instead of throwing, so nothing ever
+  errored. Reproduced directly in-browser: uploaded a real file, confirmed the resulting `blob:` URL fetched
+  to 4 bytes with `naturalWidth`/`naturalHeight` both 0, then isolated it to the bare `[file].map(compressImage)`
+  call outside React entirely. Fixed with `valid.map(f => compressImage(f))`. Verified in-browser after the
+  fix: same file now produces a correct 800×600 / 3609-byte blob and renders in the thumbnail grid.
 - ESA WorldCover WCS endpoint response format unverified in browser — fallback to OSM Overpass is in place.
 - `overpass-api.de` (used by the land-cover fallback and the distance-to-road/distance-to-water fetches) has
   been unreachable at the TCP level (`ERR_CONNECTION_REFUSED`) since 2026-08-11. Initially attributed this to
@@ -410,6 +420,35 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
   distance-to-water onto Tilequery again without solving this first (e.g. a support ticket to Mapbox, or a
   different Mapbox product entirely) — road and water are NOT symmetric in Tilequery's capabilities despite
   looking like they should be.
+- **Field report of Mapbox road / ESA / Overpass all failing at once, investigated (2026-08-12).** User pasted
+  a real console log from a live test: a `CoreLocationProvider kCLErrorLocationUnknown` line (the device's own
+  GPS lookup failed), an ESA WorldCover `ERR_HTTP2_PROTOCOL_ERROR`, and CORS-blocked failures on both
+  `overpass.openstreetmap.fr` and `overpass-api.de`, at coordinates `38.510733, -108.537297` (rural western
+  Colorado, near Whitewater/Gateway, deep in the Uncompahgre Plateau backcountry). Verified directly rather
+  than guessing:
+  1. Curled Mapbox Tilequery for that exact point with the production token: **zero road-layer features up to
+     a 100km radius**, while the same query at nearby Grand Junction (only ~15km away) and Ann Arbor returns
+     results immediately. This is a real Mapbox `mapbox-streets-v8` data-coverage gap for this specific remote
+     point, not a token/deploy/code problem, confirmed independently of the app.
+  2. Curled all three Overpass endpoints (`openstreetmap.fr`, `maps.mail.ru`, and even the dropped
+     `overpass-api.de`) for the same coordinates minutes later: all three returned a clean HTTP 200. Combined
+     with the `CoreLocationProvider` failure and the `ERR_HTTP2_PROTOCOL_ERROR` on ESA, this points to a flaky
+     connection on the user's end at test time (consistent with field-testing from a remote area with weak
+     signal) rather than a server-side or code-side outage.
+  Net: no code changes made. This class of "everything failed at once, on a remote location, right after a
+  GPS failure" fits the app's existing offline/degrade design (`—` shown, manual pencil-edit still available,
+  retry via the refetch icon or the offline-queue backfill on reconnect) rather than being a new bug.
+  **Follow-up: user pushed back that a code bug is more likely than flaky network** since failures looked
+  consistent across their own repeated tests. Set up Vitest + React Testing Library (new devDependency, see
+  Tech Stack table) and wrote `src/steps/Step3Environment.test.jsx` (7 tests) mocking `fetchEnvironmentData`
+  to isolate the component's own logic from real network/API variability: fetch-once-on-mount, full success,
+  partial failure (only proximity fields null → still shows success, not deferred), total failure (core
+  fields null → correctly defers), offline short-circuit (no fetch call at all when `navigator.onLine` is
+  false), remount-with-cached-data skip, and manual-field preservation across a refetch. All 7 passed against
+  the actual component code with no fixes needed — the fetch orchestration, success/deferred/partial-failure
+  branching, and manual-override merge logic are all correct. This is real evidence (not just external curl
+  checks) that the failures are coming from the third-party APIs/network, not from a bug in this component.
+  Run via `npm test`.
 - `npm run dev` (plain Vite) does not serve `/api/*` — Vercel functions only run when deployed, or locally via
   `vercel dev`. Submit will fail with a 404 under plain `vite dev`; that's expected, not a regression.
 - Only one photo attaches to the Kobo submission even if multiple are uploaded in Step 1 — the Kobo form's

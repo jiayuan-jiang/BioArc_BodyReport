@@ -109,7 +109,7 @@ export default function Step1Specimen({ form, update, onNext }) {
 
   const handleFiles = async (files) => {
     const valid = Array.from(files).filter(f => f.type.startsWith('image/'))
-    const compressed = await Promise.all(valid.map(compressImage))
+    const compressed = await Promise.all(valid.map(f => compressImage(f)))
     const previews = compressed.map(f => ({ file: f, url: URL.createObjectURL(f), name: f.name }))
     update({ photos: [...form.photos, ...previews] })
   }
