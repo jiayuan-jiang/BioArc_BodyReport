@@ -289,17 +289,20 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
 }
 
 // Public Overpass instances to try, in order. openstreetmap.fr is listed
-// first: overpass-api.de (the more commonly referenced instance) was
+// only: overpass-api.de (the more commonly referenced instance) was
 // confirmed unreachable at the TCP level from four independent networks
 // during testing (2026-08-12) — not a per-client rate limit, since even a
 // WebFetch call routed through unrelated infrastructure couldn't connect —
-// while openstreetmap.fr answered normally throughout. Trying a dead host
-// first wastes a full connection-timeout on every single fetch, so the
-// working one goes first; overpass-api.de is kept as a fallback in case it
-// recovers.
+// and showed no sign of recovering over multiple days. Keeping it in the
+// list as a "fallback" cost a full guaranteed-fail connection attempt on
+// every request where openstreetmap.fr also had a blip, for zero benefit.
+// Dropped entirely rather than reordered. Re-add it (or another public
+// mirror) if openstreetmap.fr itself becomes unreliable long-term — a few
+// other candidates (kumi.systems, monicz.dev, private.coffee) were tried
+// directly and were themselves slow/unreachable at the time, so they
+// weren't an improvement.
 const OVERPASS_ENDPOINTS = [
   'https://overpass.openstreetmap.fr/api/interpreter',
-  'https://overpass-api.de/api/interpreter',
 ]
 
 // Module-level, not per-call: once an endpoint fails outright (network error

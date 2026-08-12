@@ -331,6 +331,20 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
   timestamp (`isOverpassEndpointDead()` / `markOverpassEndpointDead()`, 60s cooldown) so a transient failure
   only costs a short window, not the rest of the session, while a genuinely dead host (like `overpass-api.de`
   right now) still isn't hammered on every radius tier. Verified in-browser again after this change.
+  **Third follow-up (same day):** despite all three fixes above, the user hit another failure — this time a
+  single CORS error on `overpass.openstreetmap.fr` itself (not a repeat-hammering pattern; just one failed
+  attempt), consistent with the free community mirror occasionally erroring out under its own load with no
+  CORS headers on the error response, something outside this app's control. At the user's suggestion, dropped
+  `overpass-api.de` from `OVERPASS_ENDPOINTS` entirely rather than keeping it as a fallback — it had shown no
+  sign of recovery across multiple days of testing, and keeping a guaranteed-dead second attempt in the list
+  only added latency on every request where the working mirror also had a blip, for zero benefit. Tried three
+  other public mirrors (kumi.systems, monicz.dev, private.coffee) directly via curl as replacement candidates;
+  all three were themselves slow/unreachable at the time, so none were a real improvement over just dropping
+  the dead one. **Honest state as of this fix:** distance-to-road/water now depends on a single free,
+  best-effort community Overpass mirror with no SLA, and will occasionally return null even when working as
+  designed — this is inherent to relying on a free third-party service, not a bug to keep chasing. The app
+  already degrades correctly when it happens (`—` shown, manual edit-pencil still available, submission never
+  blocked), which is the actual mitigation for this class of failure, not further endpoint engineering.
 - `npm run dev` (plain Vite) does not serve `/api/*` — Vercel functions only run when deployed, or locally via
   `vercel dev`. Submit will fail with a 404 under plain `vite dev`; that's expected, not a regression.
 - Only one photo attaches to the Kobo submission even if multiple are uploaded in Step 1 — the Kobo form's
