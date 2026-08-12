@@ -17,6 +17,21 @@ async function fetchSpeciesSuggestions(query, signal) {
   }))
 }
 
+// createImageBitmap(file) is the fast path, but it's known to throw — or on some iOS
+// Safari versions, silently hand back a bitmap WebKit then fails to draw from — for
+// photos straight off a phone's camera roll (wide-gamut/Display P3 JPEGs are the usual
+// trigger). <img>/FileReader decoding is the slower but far more broadly-compatible
+// fallback: an HTMLImageElement works as a drawImage() source exactly like a bitmap.
+function decodeViaImgElement(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error(`Could not decode ${file.name} via <img> fallback`))
+    img.src = url
+  })
+}
+
 // No browser other than Safari can decode HEIC/HEIF natively, so createImageBitmap()
 // throws on it directly. heic-to wraps a WASM build of libheif for that case — loaded
 // via dynamic import so it's only fetched when a HEIC file actually shows up, not as
@@ -25,9 +40,13 @@ async function decodeToBitmap(file) {
   try {
     return await createImageBitmap(file)
   } catch {
-    const { heicTo } = await import('heic-to')
-    const jpeg = await heicTo({ blob: file, type: 'image/jpeg', quality: 0.92 })
-    return await createImageBitmap(jpeg)
+    try {
+      const { heicTo } = await import('heic-to')
+      const jpeg = await heicTo({ blob: file, type: 'image/jpeg', quality: 0.92 })
+      return await createImageBitmap(jpeg)
+    } catch {
+      return await decodeViaImgElement(file)
+    }
   }
 }
 
@@ -36,9 +55,10 @@ async function decodeToBitmap(file) {
 // storage tier is the actual bottleneck (1GB, not the 5000/month submission cap).
 async function compressImage(file, maxDim = 1280, quality = 0.75) {
   const bitmap = await decodeToBitmap(file)
-  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height))
-  const w = Math.round(bitmap.width * scale)
-  const h = Math.round(bitmap.height * scale)
+  const srcW = bitmap.width, srcH = bitmap.height
+  const scale = Math.min(1, maxDim / Math.max(srcW, srcH))
+  const w = Math.round(srcW * scale)
+  const h = Math.round(srcH * scale)
 
   const canvas = document.createElement('canvas')
   canvas.width = w
@@ -46,6 +66,13 @@ async function compressImage(file, maxDim = 1280, quality = 0.75) {
   canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h)
 
   const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality))
+  // A canvas that failed to decode/draw (bad color profile, WebKit quirk, etc.) still
+  // resolves toBlob() with a "valid" near-empty blob instead of throwing — this is
+  // exactly how the very first version of this bug went unnoticed. Treat a suspiciously
+  // tiny result as a decode failure rather than shipping a broken thumbnail silently.
+  if (!blob || blob.size < 500) {
+    throw new Error(`Compressed output for ${file.name} is suspiciously small (${blob?.size ?? 0} bytes)`)
+  }
   const name = file.name.replace(/\.[^.]+$/, '') + '.jpg'
   return new File([blob], name, { type: 'image/jpeg' })
 }
@@ -128,6 +155,7 @@ export default function Step1Specimen({ form, update, onNext }) {
     // would otherwise get silently dropped here before it ever reaches compressImage.
     const valid = Array.from(files).filter(f => f.type.startsWith('image/') || /\.hei[cf]$/i.test(f.name))
     const results = await Promise.allSettled(valid.map(f => compressImage(f)))
+    results.forEach(r => { if (r.status === 'rejected') console.error('Photo processing failed:', r.reason) })
     const previews = results
       .filter(r => r.status === 'fulfilled')
       .map(r => ({ file: r.value, url: URL.createObjectURL(r.value), name: r.value.name }))

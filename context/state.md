@@ -320,6 +320,22 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
   batch; failures are now skipped individually and surface `s1_err_photo_decode` to the user. Verified
   in-browser: a real HEIC file now compresses correctly (800×600 / 3609-byte JPEG), and a deliberately corrupt
   file in a mixed batch gets skipped with the JPG next to it still succeeding.
+- **Not yet fully root-caused (2026-08-12): a real photo on a real iPhone (Safari) still showed as a broken
+  thumbnail after both fixes above** — filename `IMG_9429.jpg`, i.e. already JPEG (iOS's file-picker transcodes
+  HEIC to JPEG before handing it to a web page, so this wasn't the HEIC path at all). Could not reproduce on
+  desktop Chrome, including against a synthetic 4032×3024 / 6.5MB JPEG matching real camera-photo dimensions —
+  that one compressed correctly. This tool only automates Chrome, not Safari, so the exact WebKit-side failure
+  (leading suspicion: Safari mishandling a wide-gamut/Display P3 color profile in `createImageBitmap`/canvas,
+  a known class of bug for photos originating as iPhone HEIC) hasn't been directly observed yet. Hardened
+  `compressImage`/`decodeToBitmap` defensively in the meantime, independent of pinning down the exact cause:
+  (1) added an `<img>`/`FileReader`-based decode fallback (`decodeViaImgElement`) for when `createImageBitmap`
+  throws and the HEIC path also isn't applicable; (2) added a post-`canvas.toBlob()` sanity check that throws
+  if the resulting blob is under 500 bytes, since a canvas that fails to draw correctly still resolves
+  `toBlob()` with a "valid" near-empty blob instead of throwing — this is the same failure shape as the very
+  first bug in this list, so on any recurrence it now gets skipped with `s1_err_photo_decode` shown to the
+  user instead of silently shipping a broken thumbnail; (3) added `console.error` logging on every rejected
+  file so a recurrence leaves a diagnosable trail. Still needs either the actual problematic photo file or
+  Safari remote-debugging console output from the affected phone to find the true root cause.
 - ESA WorldCover WCS endpoint response format unverified in browser — fallback to OSM Overpass is in place.
 - `overpass-api.de` (used by the land-cover fallback and the distance-to-road/distance-to-water fetches) has
   been unreachable at the TCP level (`ERR_CONNECTION_REFUSED`) since 2026-08-11. Initially attributed this to
