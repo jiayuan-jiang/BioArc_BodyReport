@@ -129,7 +129,12 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
 
   useEffect(() => {
     if (!hasLocation) return
-    if (form.elevation !== null) return
+    // Step3Environment unmounts when navigating away and remounts fresh on
+    // return — `status` is local state and would otherwise reset to 'idle'
+    // even though the already-fetched data is still sitting in `form`,
+    // hiding the success banner, refetch button, and edit hint until the
+    // (unnecessary) next fetch completes.
+    if (form.elevation !== null) { setStatus('done'); return }
     if (form.envFetchPending) { setStatus('deferred'); return }
     runFetch()
   }, [])

@@ -249,6 +249,16 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
   captures the true as-fetched value regardless, so nothing is lost either way. Verified in-browser:
   manually set Elevation to a distinctive test value, clicked refetch, confirmed Elevation stayed manually
   overridden while Temperature/Humidity/etc. all refreshed with new live values.
+  **Follow-up fix (2026-08-11, same day):** user reported the refetch icon disappeared after navigating back
+  to Step 2 and forward to Step 3 again. Root cause: `status` is local `useState('idle')` state in
+  `Step3Environment`, which unmounts on navigating away and remounts fresh on return — the actual fetched
+  data lives in the parent `form` and survives fine, but `status` reset to `'idle'` on remount, and `'idle'`
+  is exactly what hides the refetch button, the success banner, and the edit hint. The mount `useEffect`
+  only handled the "never fetched yet" and "fetch is pending" cases, never the "already fetched successfully
+  in a prior mount" case. Fixed by setting `status` to `'done'` immediately when `form.elevation !== null` on
+  mount, instead of silently returning with `status` still at its initial value. Verified in-browser: fetched
+  once, navigated Back to Step 2 then Next to Step 3, confirmed the refetch icon and success banner both
+  persisted immediately with the same data (no unnecessary re-fetch).
 
 ### In Progress
 (none)
