@@ -220,12 +220,11 @@ async function fetchLandCoverOSM(lat, lng) {
 // instead of blocking the other two. Shared by the live Step 3 fetch and the
 // offline queue's deferred backfill so both follow identical fallback rules.
 export async function fetchEnvironmentData(lat, lng, date) {
-  const [elev, weather, lc, road, water] = await Promise.allSettled([
+  const [elev, weather, lc, roadWater] = await Promise.allSettled([
     fetchElevation(lat, lng),
     fetchWeather(lat, lng, date),
     fetchLandCover(lat, lng),
-    fetchDistanceToRoad(lat, lng),
-    fetchDistanceToWater(lat, lng),
+    fetchRoadWaterDistances(lat, lng),
   ])
 
   const weatherSource = weather.status === 'fulfilled' ? weather.value.source : null
@@ -247,8 +246,8 @@ export async function fetchEnvironmentData(lat, lng, date) {
     soilTemperatureDaily: weather.status === 'fulfilled' ? weather.value.soilTemperatureDaily  ?? null : null,
     soilMoistureDaily:    weather.status === 'fulfilled' ? weather.value.soilMoistureDaily     ?? null : null,
     landCover:       lc.status      === 'fulfilled' ? lc.value      : null,
-    distanceToRoad:  road.status    === 'fulfilled' ? road.value    : null,
-    distanceToWater: water.status   === 'fulfilled' ? water.value   : null,
+    distanceToRoad:  roadWater.status === 'fulfilled' ? roadWater.value.distanceToRoad  : null,
+    distanceToWater: roadWater.status === 'fulfilled' ? roadWater.value.distanceToWater : null,
   }
 
   return { fetched, weatherSource }
@@ -306,27 +305,49 @@ const OVERPASS_ENDPOINTS = [
 // Module-level, not per-call: once an endpoint fails outright (network error
 // or bad response, as opposed to a valid response with no matches), it's
 // skipped for the rest of the page session instead of being retried at every
-// radius tier. distance-to-road and distance-to-water run concurrently and
-// each retries across 3 radii, so without this a single dead endpoint could
-// draw a dozen-plus requests from one env-data fetch alone — enough to trip
-// the free public mirror's own rate limiting too (observed directly: a burst
-// of testing against overpass-api.de got it blocked, then the same retry
-// pattern against the openstreetmap.fr fallback started drawing CORS errors
-// consistent with its rate limiter dropping CORS headers on throttled
-// responses, even though the endpoint's CORS config is otherwise correct).
+// radius tier. Without this a single dead endpoint could still draw several
+// requests from one env-data fetch (up to 3 radii) — road and water distance
+// used to be two separate concurrently-retried queries, doubling that; now
+// merged into one combined query (below) specifically because that doubled,
+// bursty request volume was very likely tripping the free public mirror's
+// own rate limiting too (observed directly: CORS errors against an endpoint
+// whose CORS config is otherwise correctly set up, consistent with its
+// limiter dropping CORS headers on throttled responses).
 const deadOverpassEndpoints = new Set()
 
-// Distance to the nearest OSM feature matching the statements `buildStatements`
-// produces, via Overpass's `around` search with an expanding radius (a fixed
-// small radius misses features in sparse rural areas). Measures distance to
-// the nearest returned vertex rather than the true perpendicular distance to
-// the way/relation's line, an acceptable approximation given typical OSM
-// vertex density. Returns null if nothing is found within the largest radius
-// on every endpoint tried.
-async function fetchNearestOSMDistance(lat, lng, buildStatements) {
+// Fetches distance-to-road and distance-to-water in a single combined query
+// (road and water elements tagged distinctly via `out tags geom`, split back
+// out client-side) instead of two separate queries. Overpass's `around`
+// search expands over a radius ladder (a fixed small radius misses features
+// in sparse rural areas). Measures distance to the nearest returned vertex
+// rather than the true perpendicular distance to the way/relation's line, an
+// acceptable approximation given typical OSM vertex density. Was originally
+// two independent functions, each retried by the caller concurrently — that
+// doubled request volume and burst pattern is very likely what was tripping
+// the free public mirror's own rate limiting (observed directly: CORS errors
+// against an endpoint whose CORS config is otherwise correctly set up).
+// Returns { distanceToRoad, distanceToWater }, either possibly null.
+async function fetchRoadWaterDistances(lat, lng) {
   const radii = [2000, 10000, 50000]
+  let distanceToRoad = null
+  let distanceToWater = null
+
   for (const radius of radii) {
-    const query = `[out:json][timeout:15];(${buildStatements(radius, lat, lng)});out geom 30;`
+    if (distanceToRoad != null && distanceToWater != null) break
+    // Named sets with a separate `out` per set, not one shared result limit —
+    // roads vastly outnumber water features in urban areas, so a single
+    // `out ... 60` on the combined set was silently starving water out of the
+    // result entirely (confirmed directly: 60/60 returned elements were all
+    // roads for a real Ann Arbor test point that does have nearby water).
+    const query = `[out:json][timeout:15];` +
+      `way(around:${radius},${lat},${lng})[highway]->.roads;` +
+      `(` +
+      `way(around:${radius},${lat},${lng})["natural"="water"];` +
+      `way(around:${radius},${lat},${lng})[waterway];` +
+      `relation(around:${radius},${lat},${lng})["natural"="water"];` +
+      `)->.water;` +
+      `.roads out tags geom 30;` +
+      `.water out tags geom 30;`
     for (const endpoint of OVERPASS_ENDPOINTS) {
       if (deadOverpassEndpoints.has(endpoint)) continue
       try {
@@ -342,35 +363,28 @@ async function fetchNearestOSMDistance(lat, lng, buildStatements) {
         }
         const data = await res.json()
 
-        let minDist = Infinity
+        let minRoad = Infinity
+        let minWater = Infinity
         for (const el of data.elements ?? []) {
+          const tags = el.tags ?? {}
+          const isRoad = !!tags.highway
+          const isWater = tags.natural === 'water' || !!tags.waterway
+          if (!isRoad && !isWater) continue
           const coords = el.geometry ?? el.members?.flatMap(m => m.geometry ?? []) ?? []
           for (const pt of coords) {
             if (pt?.lat == null || pt?.lon == null) continue
             const d = haversineMeters(lat, lng, pt.lat, pt.lon)
-            if (d < minDist) minDist = d
+            if (isRoad && d < minRoad) minRoad = d
+            if (isWater && d < minWater) minWater = d
           }
         }
-        if (minDist < Infinity) return Math.round(minDist)
-        break // this endpoint answered but found nothing at this radius — escalate radius, don't also ask the other endpoint the same question
+        if (distanceToRoad == null && minRoad < Infinity) distanceToRoad = Math.round(minRoad)
+        if (distanceToWater == null && minWater < Infinity) distanceToWater = Math.round(minWater)
+        break // this endpoint answered — escalate radius (if still missing something), don't also ask the other endpoint
       } catch { deadOverpassEndpoints.add(endpoint) }
     }
   }
-  return null
-}
-
-export async function fetchDistanceToRoad(lat, lng) {
-  return fetchNearestOSMDistance(lat, lng, (r, la, lo) =>
-    `way(around:${r},${la},${lo})[highway];`
-  )
-}
-
-export async function fetchDistanceToWater(lat, lng) {
-  return fetchNearestOSMDistance(lat, lng, (r, la, lo) =>
-    `way(around:${r},${la},${lo})["natural"="water"];` +
-    `way(around:${r},${la},${lo})[waterway];` +
-    `relation(around:${r},${la},${lo})["natural"="water"];`
-  )
+  return { distanceToRoad, distanceToWater }
 }
 
 async function fetchLandCoverNominatim(lat, lng) {

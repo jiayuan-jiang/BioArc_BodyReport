@@ -311,6 +311,15 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
   Verified in-browser after the fix: full env fetch (including both distance fields) resolved noticeably
   faster and both fields returned correct values. Both distance fetches still fail gracefully (field shows
   `—`, manual edit-pencil still works, submission isn't blocked) if every endpoint fails.
+  **Follow-up (same day):** the user then reported Distance to Water still coming back `—` even after the
+  above. Root cause was a second, separate bug introduced by merging the two distance queries into one
+  request to cut Overpass traffic: the combined query shared a single `out tags geom 60` result limit across
+  both road and water elements, and in road-dense areas (confirmed directly with a real Ann Arbor test point)
+  Overpass filled all 60 slots with roads, silently crowding water out of the response entirely. Fixed by
+  using named sets (`->.roads`, `->.water`) with a separate `out tags geom 30` per set in the same query, so
+  each category gets its own guaranteed slice regardless of how many roads exist nearby — confirmed via curl
+  (60/60 all-roads before the fix, 30 roads + 30 water after) and re-verified in-browser (both fields
+  correct again: 127 m road, 921 m water for the same test point).
 - `npm run dev` (plain Vite) does not serve `/api/*` — Vercel functions only run when deployed, or locally via
   `vercel dev`. Submit will fail with a 404 under plain `vite dev`; that's expected, not a regression.
 - Only one photo attaches to the Kobo submission even if multiple are uploaded in Step 1 — the Kobo form's
