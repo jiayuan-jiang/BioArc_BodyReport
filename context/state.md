@@ -15,6 +15,8 @@ _Last updated: 2026-08-11_
 | Elevation API | Open-Elevation (SRTM) | free, no key |
 | Weather API | Open-Meteo archive | free, no key |
 | Land cover API | ESA WorldCover WCS + OSM Overpass fallback | free, no key |
+| Distance to road API | Mapbox Tilequery | free tier (100k/mo), needs `VITE_MAPBOX_TOKEN` |
+| Distance to water API | OSM Overpass (`.fr` + `maps.mail.ru` mirrors) | free, no key |
 | PWA / offline | vite-plugin-pwa (Workbox `generateSW`) + IndexedDB local queue | ^1.3.0, new 2026-08-10 |
 | Deployment | Vercel (auto-deploy via GitHub App, live) | https://bioarc.vercel.app |
 | Hosting repo | GitHub — jiayuan-jiang/BioArc_BodyReport | — |
@@ -33,6 +35,7 @@ not a per-deployment URL.
 | Variable | Purpose | Where set |
 |----------|---------|-----------|
 | `VITE_KOBO_ASSET_UID` | Target KoboToolbox project (client-safe, embedded in submission XML `id`) | `.env` / Vercel |
+| `VITE_MAPBOX_TOKEN` | Mapbox public token (`pk.*`, client-safe by design), used by `fetchDistanceToRoadMapbox()` in `environmentApi.js` — added 2026-08-12, already had one via the PI, no new signup needed | `.env` / Vercel |
 | `KOBO_API_KEY` | KoboToolbox auth token — **server-only**, read by `api/kobo-submit.js` | `.env` (local) / Vercel dashboard (prod) |
 | `KOBO_BASE_URL` | `https://kf.kobotoolbox.org` — server-only | `.env` / Vercel |
 | `KOBO_OWNER_USERNAME` | Kobo username that owns the asset (`derekv`) — the OpenRosa submission URL is `{BASE_URL}/{OWNER_USERNAME}/submission`, not the asset UID | `.env` / Vercel |
@@ -395,6 +398,18 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
   (`env_manual_fields`/`env_fetched_snapshot`). Verified via a direct OpenRosa test submission and, live on
   the real deployed site, saw the sub-label correctly read "OSM Nominatim (fallback)" for a location where
   WCS and Overpass had both failed — exactly the bug, now fixed and observed fixed in the same session.
+- **Resolution of the whole Overpass-reliability thread (2026-08-12):** distance-to-road switched entirely to
+  Mapbox Tilequery (see tech stack table), at the user's request after repeated real, confirmed reliability
+  failures on the free Overpass mirrors. `OVERPASS_ENDPOINTS`/cooldown machinery stays in place for
+  distance-to-water and the land-cover fallback, which remain on Overpass.
+  **Real limitation found and worth remembering:** Mapbox Tilequery cannot query the `water` layer at all in
+  this tileset — confirmed directly with a point in the middle of the Detroit River at radius 0 (should be a
+  trivial point-in-polygon hit) still returning zero features, and `waterway` (the line layer) also empty up
+  to 50km radius at the same spot. Mapbox's own tileset docs describe `water` as "a single merged shape per
+  tile," which doesn't appear to work with Tilequery's point-radius search mechanism. Don't attempt to move
+  distance-to-water onto Tilequery again without solving this first (e.g. a support ticket to Mapbox, or a
+  different Mapbox product entirely) — road and water are NOT symmetric in Tilequery's capabilities despite
+  looking like they should be.
 - `npm run dev` (plain Vite) does not serve `/api/*` — Vercel functions only run when deployed, or locally via
   `vercel dev`. Submit will fail with a 404 under plain `vite dev`; that's expected, not a regression.
 - Only one photo attaches to the Kobo submission even if multiple are uploaded in Step 1 — the Kobo form's

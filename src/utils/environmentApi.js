@@ -286,36 +286,6 @@ export async function resolveEnvironment(form) {
   return merged
 }
 
-function haversineMeters(lat1, lon1, lat2, lon2) {
-  const R = 6371000
-  const toRad = d => d * Math.PI / 180
-  const dLat = toRad(lat2 - lat1)
-  const dLon = toRad(lon2 - lon1)
-  const a = Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2
-  return 2 * R * Math.asin(Math.sqrt(a))
-}
-
-// Public Overpass instances to try, in order. overpass-api.de was dropped
-// entirely (confirmed unreachable at the TCP level from four independent
-// networks with no sign of recovering over multiple days, so it was pure
-// dead weight as a "fallback"). openstreetmap.fr is otherwise healthy but a
-// small community server — confirmed directly (via real network requests on
-// the deployed site, twice) that it intermittently returns a clean HTTP 503
-// under its own load, not a connection failure. maps.mail.ru is a second,
-// independently-verified working mirror (correct CORS headers, real non-
-// empty data, supports the named-set query syntax below) added specifically
-// so a 503 on the first has somewhere else to go within the same fetch
-// instead of waiting out the 60s cooldown. Other candidates tried directly
-// and ruled out: kumi.systems/monicz.dev/private.coffee (unreachable at
-// test time), overpass.osm.ch (reachable, correct CORS, but returns zero
-// elements even for landmarks guaranteed to have nearby roads — broken/
-// stale dataset).
-const OVERPASS_ENDPOINTS = [
-  'https://overpass.openstreetmap.fr/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
-]
-
 // Module-level, not per-call: once an endpoint fails outright (network error
 // or bad response, as opposed to a valid response with no matches), it's
 // skipped for a cooldown window instead of being retried at every radius
@@ -340,39 +310,90 @@ function markOverpassEndpointDead(endpoint) {
   overpassRetryAfter.set(endpoint, Date.now() + OVERPASS_COOLDOWN_MS)
 }
 
-// Fetches distance-to-road and distance-to-water in a single combined query
-// (road and water elements tagged distinctly via `out tags geom`, split back
-// out client-side) instead of two separate queries. Overpass's `around`
-// search expands over a radius ladder (a fixed small radius misses features
-// in sparse rural areas). Measures distance to the nearest returned vertex
-// rather than the true perpendicular distance to the way/relation's line, an
-// acceptable approximation given typical OSM vertex density. Was originally
-// two independent functions, each retried by the caller concurrently — that
-// doubled request volume and burst pattern is very likely what was tripping
-// the free public mirror's own rate limiting (observed directly: CORS errors
-// against an endpoint whose CORS config is otherwise correctly set up).
-// Returns { distanceToRoad, distanceToWater }, either possibly null.
-async function fetchRoadWaterDistances(lat, lng) {
-  const radii = [2000, 10000, 50000]
-  let distanceToRoad = null
-  let distanceToWater = null
+// Distance to the nearest road, via Mapbox's Tilequery API against the
+// standard streets tileset. Replaced an earlier OSM Overpass-based
+// implementation after repeated, directly-confirmed reliability problems
+// with the free public Overpass mirrors (connection refusals, intermittent
+// 503s under their own load, once even two independent mirrors failing
+// simultaneously) — Tilequery is a paid-infra service with a generous free
+// tier (100k requests/month) and returns `properties.tilequery.distance`
+// directly rather than requiring a client-side haversine calc. Escalates
+// radius since a small one can miss roads in sparse rural areas; Mapbox
+// documents no hard maximum on the radius parameter.
+//
+// Water is deliberately NOT queried via Tilequery: confirmed directly (a
+// point in the middle of the Detroit River, radius 0, still returned zero
+// features) that Tilequery cannot query the `water` layer at all — Mapbox's
+// own tileset docs describe it as "a single merged shape per tile," which
+// doesn't appear to work with Tilequery's point-radius search. `waterway`
+// (the line-geometry layer for rivers/streams) came back empty too at the
+// same location, up to 50km radius. Water distance stays on the Overpass
+// path below instead.
+async function fetchDistanceToRoadMapbox(lat, lng) {
+  const token = import.meta.env.VITE_MAPBOX_TOKEN
+  if (!token) return null
 
+  const radii = [5000, 50000]
   for (const radius of radii) {
-    if (distanceToRoad != null && distanceToWater != null) break
-    // Named sets with a separate `out` per set, not one shared result limit —
-    // roads vastly outnumber water features in urban areas, so a single
-    // `out ... 60` on the combined set was silently starving water out of the
-    // result entirely (confirmed directly: 60/60 returned elements were all
-    // roads for a real Ann Arbor test point that does have nearby water).
-    const query = `[out:json][timeout:15];` +
-      `way(around:${radius},${lat},${lng})[highway]->.roads;` +
-      `(` +
+    const url = new URL(`https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/tilequery/${lng},${lat}.json`)
+    url.searchParams.set('radius', radius)
+    url.searchParams.set('layers', 'road')
+    url.searchParams.set('limit', '50')
+    url.searchParams.set('access_token', token)
+
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(15000) })
+      if (!res.ok) continue
+      const data = await res.json()
+
+      let min = null
+      for (const feature of data.features ?? []) {
+        const dist = feature.properties?.tilequery?.distance
+        if (dist == null) continue
+        if (min == null || dist < min) min = dist
+      }
+      if (min != null) return Math.round(min)
+    } catch { /* try the next, larger radius */ }
+  }
+  return null
+}
+
+// Public Overpass instances to try, in order, for distance-to-water only
+// (road moved to Mapbox above). overpass-api.de was dropped entirely
+// (confirmed unreachable at the TCP level from four independent networks
+// with no sign of recovering over multiple days — pure dead weight as a
+// "fallback"). openstreetmap.fr is otherwise healthy but a small community
+// server that intermittently returns a clean HTTP 503 under its own load
+// (confirmed directly, twice, on the deployed site). maps.mail.ru is a
+// second, independently-verified working mirror added so a 503 on the first
+// has somewhere else to go within the same fetch instead of only the 60s
+// cooldown below. Other candidates tried directly and ruled out:
+// kumi.systems/monicz.dev/private.coffee (unreachable at test time),
+// overpass.osm.ch (reachable, correct CORS, but returns zero elements even
+// for landmarks guaranteed to have nearby roads — broken/stale dataset).
+const OVERPASS_ENDPOINTS = [
+  'https://overpass.openstreetmap.fr/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+]
+
+function haversineMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000
+  const toRad = d => d * Math.PI / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLon = toRad(lon2 - lon1)
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(a))
+}
+
+async function fetchDistanceToWaterOverpass(lat, lng) {
+  const radii = [2000, 10000, 50000]
+  for (const radius of radii) {
+    const query = `[out:json][timeout:15];(` +
       `way(around:${radius},${lat},${lng})["natural"="water"];` +
       `way(around:${radius},${lat},${lng})[waterway];` +
       `relation(around:${radius},${lat},${lng})["natural"="water"];` +
-      `)->.water;` +
-      `.roads out tags geom 30;` +
-      `.water out tags geom 30;`
+      `);out geom 30;`
     for (const endpoint of OVERPASS_ENDPOINTS) {
       if (isOverpassEndpointDead(endpoint)) continue
       try {
@@ -388,28 +409,32 @@ async function fetchRoadWaterDistances(lat, lng) {
         }
         const data = await res.json()
 
-        let minRoad = Infinity
-        let minWater = Infinity
+        let minDist = Infinity
         for (const el of data.elements ?? []) {
-          const tags = el.tags ?? {}
-          const isRoad = !!tags.highway
-          const isWater = tags.natural === 'water' || !!tags.waterway
-          if (!isRoad && !isWater) continue
           const coords = el.geometry ?? el.members?.flatMap(m => m.geometry ?? []) ?? []
           for (const pt of coords) {
             if (pt?.lat == null || pt?.lon == null) continue
             const d = haversineMeters(lat, lng, pt.lat, pt.lon)
-            if (isRoad && d < minRoad) minRoad = d
-            if (isWater && d < minWater) minWater = d
+            if (d < minDist) minDist = d
           }
         }
-        if (distanceToRoad == null && minRoad < Infinity) distanceToRoad = Math.round(minRoad)
-        if (distanceToWater == null && minWater < Infinity) distanceToWater = Math.round(minWater)
-        break // this endpoint answered — escalate radius (if still missing something), don't also ask the other endpoint
+        if (minDist < Infinity) return Math.round(minDist)
+        break // this endpoint answered but found nothing at this radius — escalate radius
       } catch { markOverpassEndpointDead(endpoint) }
     }
   }
-  return { distanceToRoad, distanceToWater }
+  return null
+}
+
+async function fetchRoadWaterDistances(lat, lng) {
+  const [road, water] = await Promise.allSettled([
+    fetchDistanceToRoadMapbox(lat, lng),
+    fetchDistanceToWaterOverpass(lat, lng),
+  ])
+  return {
+    distanceToRoad:  road.status  === 'fulfilled' ? road.value  : null,
+    distanceToWater: water.status === 'fulfilled' ? water.value : null,
+  }
 }
 
 async function fetchLandCoverNominatim(lat, lng) {

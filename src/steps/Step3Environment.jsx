@@ -400,7 +400,11 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
               <a href="https://esa-worldcover.org/" target="_blank" rel="noopener noreferrer">esa-worldcover.org</a>
             </li>
             <li>
-              OpenStreetMap via Overpass API. <em>Nearest road and water body distance, and land cover fallback if ESA WorldCover is unavailable.</em>{' '}
+              Mapbox Tilequery API. <em>Nearest road distance.</em>{' '}
+              <a href="https://docs.mapbox.com/api/maps/tilequery/" target="_blank" rel="noopener noreferrer">mapbox.com</a>
+            </li>
+            <li>
+              OpenStreetMap via Overpass API. <em>Nearest water body distance, and land cover fallback if ESA WorldCover is unavailable.</em>{' '}
               <a href="https://overpass-api.de/" target="_blank" rel="noopener noreferrer">overpass-api.de</a>
             </li>
             <li>

@@ -54,6 +54,21 @@ Format: `[priority] Task title. Spec pointer`
 
 ## Done
 
+- [x] **[MEDIUM] Switch distance-to-road to Mapbox Tilequery + PWA update fix** (2026-08-12)
+  After continued real, confirmed Overpass reliability failures (documented in the prior entry below),
+  switched distance-to-road to Mapbox Tilequery API (`VITE_MAPBOX_TOKEN`, already had a token via the PI —
+  no signup needed). Found and worked around a real Mapbox limitation: Tilequery cannot query the `water`
+  layer at all (confirmed: a point in the middle of the Detroit River, radius 0, still returns zero
+  features) — so distance-to-water stays on the existing Overpass mirror setup, now genuinely reliable
+  since it's the only thing being queried (no more shared-limit crowding). Verified live: road 0m (Mapbox),
+  water 921m (Overpass, matching the earlier known-good value).
+  Also fixed a much bigger, separate bug found while verifying: the PWA's service worker never reloaded the
+  page on update (`registerType: 'autoUpdate'`'s default script only registers, never listens for
+  `controllerchange`), meaning fresh navigations could silently run stale JS from a previous deploy — very
+  likely a real contributing cause behind several "fix looks correct, still doesn't work" reports earlier in
+  this thread. Fixed via `virtual:pwa-register`'s `registerSW({ immediate: true })`.
+  → `context/state.md`, `memory/sessions/2026-08-11.md`
+
 - [x] **[MEDIUM] Overpass reliability chain + land-cover source labeling** (2026-08-12)
   Multi-round fix for distance-to-road/water: dropped the confirmed-dead `overpass-api.de` fallback, added a
   60s cooldown for transient endpoint failures (was permanent-for-session), merged the two distance queries
