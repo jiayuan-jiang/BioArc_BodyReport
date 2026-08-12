@@ -166,6 +166,12 @@ export async function fetchWeather(lat, lng, date) {
   throw new Error('No weather data')
 }
 
+// Returns { value, source } — `source` is one of 'esa_worldcover' | 'overpass'
+// | 'nominatim' | null, so the UI can show which of the three fallback tiers
+// actually answered instead of a hardcoded "ESA WorldCover 2021" label
+// regardless of which source landed (a real mislabeling bug found while
+// investigating a live Overpass outage: the WCS endpoint had silently failed
+// and the value shown was actually from Nominatim, but the label didn't say so).
 export async function fetchLandCover(lat, lng) {
   // ESA WorldCover via Copernicus WCS — returns a pixel value we map to class name
   const delta = 0.0001
@@ -183,7 +189,7 @@ export async function fetchLandCover(lat, lng) {
     if (!res.ok) throw new Error()
     const data = await res.json()
     const pixel = data?.coverages?.[0]?.values?.[0]
-    return LUCC_CLASSES[pixel] ?? `Class ${pixel}`
+    return { value: LUCC_CLASSES[pixel] ?? `Class ${pixel}`, source: 'esa_worldcover' }
   } catch {
     // Fallback: query OpenStreetMap Overpass for land use tag
     return await fetchLandCoverOSM(lat, lng)
@@ -205,7 +211,7 @@ async function fetchLandCoverOSM(lat, lng) {
         const data = await res.json()
         const tags = data.elements?.[0]?.tags
         const tag = tags?.landuse || tags?.natural
-        if (tag) return tag.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+        if (tag) return { value: tag.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()), source: 'overpass' }
       } else {
         markOverpassEndpointDead(endpoint)
       }
@@ -228,6 +234,7 @@ export async function fetchEnvironmentData(lat, lng, date) {
   ])
 
   const weatherSource = weather.status === 'fulfilled' ? weather.value.source : null
+  const landCoverSource = lc.status === 'fulfilled' ? lc.value.source : null
 
   const fetched = {
     elevation:       elev.status    === 'fulfilled' ? elev.value    : null,
@@ -245,12 +252,12 @@ export async function fetchEnvironmentData(lat, lng, date) {
     weatherCodeDaily:     weather.status === 'fulfilled' ? weather.value.weatherCodeDaily      ?? null : null,
     soilTemperatureDaily: weather.status === 'fulfilled' ? weather.value.soilTemperatureDaily  ?? null : null,
     soilMoistureDaily:    weather.status === 'fulfilled' ? weather.value.soilMoistureDaily     ?? null : null,
-    landCover:       lc.status      === 'fulfilled' ? lc.value      : null,
+    landCover:       lc.status      === 'fulfilled' ? lc.value.value : null,
     distanceToRoad:  roadWater.status === 'fulfilled' ? roadWater.value.distanceToRoad  : null,
     distanceToWater: roadWater.status === 'fulfilled' ? roadWater.value.distanceToWater : null,
   }
 
-  return { fetched, weatherSource }
+  return { fetched, weatherSource, landCoverSource }
 }
 
 // Used by the offline queue (and Step 5 as a last-chance attempt before
@@ -262,7 +269,7 @@ export async function fetchEnvironmentData(lat, lng, date) {
 export async function resolveEnvironment(form) {
   if (!form.envFetchPending || !form.latitude || !form.longitude) return form
 
-  const { fetched, weatherSource } = await fetchEnvironmentData(form.latitude, form.longitude, form.collectionDate)
+  const { fetched, weatherSource, landCoverSource } = await fetchEnvironmentData(form.latitude, form.longitude, form.collectionDate)
   const manualFields = new Set(form.manualEnvFields ?? [])
 
   const merged = { ...form }
@@ -270,7 +277,8 @@ export async function resolveEnvironment(form) {
     if (!manualFields.has(key) && merged[key] == null) merged[key] = value
   }
   if (merged.weatherSource == null) merged.weatherSource = weatherSource
-  if (merged.envFetchedSnapshot == null) merged.envFetchedSnapshot = { ...fetched, weatherSource }
+  if (merged.landCoverSource == null) merged.landCoverSource = landCoverSource
+  if (merged.envFetchedSnapshot == null) merged.envFetchedSnapshot = { ...fetched, weatherSource, landCoverSource }
 
   const stillMissing = merged.elevation == null && merged.temperature == null && merged.landCover == null
   merged.envFetchPending = stillMissing
@@ -410,7 +418,7 @@ async function fetchLandCoverNominatim(lat, lng) {
   const data = await res.json()
   const cls = data.class
   const type = data.type
-  if (!cls) return null
+  if (!cls) return { value: null, source: null }
   const raw = (type && type !== cls) ? `${cls} / ${type}` : cls
-  return raw.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  return { value: raw.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()), source: 'nominatim' }
 }

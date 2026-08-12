@@ -25,6 +25,7 @@ const initialForm = {
   locality: '',
   elevation: null,
   landCover: null,
+  landCoverSource: null,
   temperature: null,
   humidity: null,
   precipitation: null,

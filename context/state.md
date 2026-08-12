@@ -345,6 +345,29 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
   designed — this is inherent to relying on a free third-party service, not a bug to keep chasing. The app
   already degrades correctly when it happens (`—` shown, manual edit-pencil still available, submission never
   blocked), which is the actual mitigation for this class of failure, not further endpoint engineering.
+  **Confirmed directly on the real production site (2026-08-12):** user asked to actually test
+  `bioarc.vercel.app` rather than take verification-on-localhost as sufficient — a fair ask, since every prior
+  verification in this whole thread had only ever been against the local dev server. Did so, reproduced the
+  null fields, and read the real network log: both `overpass.openstreetmap.fr` and `overpass-api.de` returned
+  HTTP 503 (Service Unavailable) — a clean rejection, not a connection failure — confirming this was a live,
+  momentary overload of the free mirror, exactly the class of failure the whole endpoint-reliability effort
+  above was built to handle gracefully, and it did (nothing else broke, land cover still resolved via its own
+  fallback chain). Also tried three more public Overpass mirrors as an escalation the user asked for
+  specifically (`overpass.osm.ch` connects fine and has correct CORS headers but returns **zero elements**
+  even for a landmark guaranteed to have nearby roads — its dataset is empty/broken, confirmed directly, not
+  a viable addition) — no better free alternative found.
+- **Land cover source mislabeling, found and fixed while investigating the above** (2026-08-12). The Land
+  Cover card's sub-label was a hardcoded `"ESA WorldCover 2021"` string regardless of which tier of the
+  fallback chain (WCS → Overpass → Nominatim) actually supplied the value — confirmed live on production that
+  a value from Nominatim was being mislabeled as ESA WorldCover. Fixed by having `fetchLandCover()` /
+  `fetchLandCoverOSM()` / `fetchLandCoverNominatim()` all return `{ value, source }` instead of a bare string,
+  threading `landCoverSource` through `fetchEnvironmentData`, `App.jsx` initial state, `resolveEnvironment()`,
+  and a dynamic sub-label in Step 3 (`esa_worldcover`/`overpass`/`nominatim` → distinct label per source, 4
+  languages). Added `land_cover_source` to `koboApi.js` and the deployed Kobo schema (37 survey rows now, was
+  36) and a Step 5 review row, matching this project's existing data-provenance conventions
+  (`env_manual_fields`/`env_fetched_snapshot`). Verified via a direct OpenRosa test submission and, live on
+  the real deployed site, saw the sub-label correctly read "OSM Nominatim (fallback)" for a location where
+  WCS and Overpass had both failed — exactly the bug, now fixed and observed fixed in the same session.
 - `npm run dev` (plain Vite) does not serve `/api/*` — Vercel functions only run when deployed, or locally via
   `vercel dev`. Submit will fail with a 404 under plain `vite dev`; that's expected, not a regression.
 - Only one photo attaches to the Kobo submission even if multiple are uploaded in Step 1 — the Kobo form's

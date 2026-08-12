@@ -47,6 +47,7 @@ function buildSubmissionXml(form, instanceId) {
   ${field('location', buildGeopoint(form))}
   ${field('dem_elevation_m', form.elevation)}
   ${field('land_cover_lucc', form.landCover)}
+  ${field('land_cover_source', form.landCoverSource)}
   ${field('weather_temperature', form.temperature)}
   ${field('weather_temperature_daily', form.temperatureDaily)}
   ${field('weather_humidity', form.humidity)}

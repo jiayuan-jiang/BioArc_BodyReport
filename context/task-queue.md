@@ -54,6 +54,18 @@ Format: `[priority] Task title. Spec pointer`
 
 ## Done
 
+- [x] **[MEDIUM] Overpass reliability chain + land-cover source labeling** (2026-08-12)
+  Multi-round fix for distance-to-road/water: dropped the confirmed-dead `overpass-api.de` fallback, added a
+  60s cooldown for transient endpoint failures (was permanent-for-session), merged the two distance queries
+  into one with named result sets. Verified live on `bioarc.vercel.app` itself (not just localhost) that
+  remaining failures are genuine third-party 503s the app already degrades from correctly — no further
+  endpoint engineering planned, this is inherent to a free no-SLA service.
+  Also fixed a related bug found along the way: Land Cover's sub-label was hardcoded to "ESA WorldCover 2021"
+  regardless of actual source. Now dynamic (`landCoverSource` threaded end-to-end, new Kobo field, 4-language
+  labels), verified live showing "OSM Nominatim (fallback)" correctly for a location where WCS/Overpass both
+  failed.
+  → `context/state.md`, `memory/sessions/2026-08-11.md`
+
 - [x] **[MEDIUM] Manual refetch icon for Step 3 environmental data** (2026-08-11)
   Fixes a real gap: correcting GPS in Step 2 and returning to Step 3 previously couldn't pull fresh env
   data (the auto-fetch effect only runs once on mount). Added a refetch icon button in the Step 3 header.

@@ -95,6 +95,11 @@ export default function Step5Review({ form, onBack, onSuccess }) {
   const weatherDailyLabel = form.weatherCodeDaily != null
     ? (WMO_CODES[form.weatherCodeDaily] ?? `Code ${form.weatherCodeDaily}`)
     : null
+  const landCoverSourceLabel = {
+    esa_worldcover: t('s3_sub_lc'),
+    overpass:        t('s3_sub_lc_overpass'),
+    nominatim:       t('s3_sub_lc_nominatim'),
+  }[form.landCoverSource]
 
   return (
     <div className="card">
@@ -144,6 +149,7 @@ export default function Step5Review({ form, onBack, onSuccess }) {
         <Section title={t('s5_sec_env')}>
           <Row label={t('s5_row_elevation')}    value={form.elevation    != null ? `${form.elevation} m`       : null} />
           <Row label={t('s5_row_landcover')}    value={form.landCover} />
+          <Row label={t('s5_row_landcover_source')} value={landCoverSourceLabel} />
           <Row label={t('s5_row_temperature')}  value={form.temperature  != null ? `${form.temperature} °C`    : null} />
           <Row label={t('s5_row_temperature_daily')}  value={form.temperatureDaily  != null ? `${form.temperatureDaily} °C`    : null} />
           <Row label={t('s5_row_humidity')}     value={form.humidity     != null ? `${form.humidity}%`         : null} />

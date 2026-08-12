@@ -100,7 +100,7 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
     }
 
     setStatus('loading')
-    const { fetched, weatherSource } = await fetchEnvironmentData(form.latitude, form.longitude, form.collectionDate)
+    const { fetched, weatherSource, landCoverSource } = await fetchEnvironmentData(form.latitude, form.longitude, form.collectionDate)
 
     // Only elevation/temperature/landCover decide "total failure" — humidity,
     // wind etc. all come from the same weather call, so they'd fail together
@@ -123,7 +123,7 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
     // Snapshot the as-fetched values before any manual edits can happen —
     // kept in the submission even if the fields below get overridden, so
     // the model's original output is never silently lost.
-    update({ ...merged, weatherSource, envFetchedSnapshot: { ...fetched, weatherSource }, envFetchPending: totalFailure })
+    update({ ...merged, weatherSource, landCoverSource, envFetchedSnapshot: { ...fetched, weatherSource, landCoverSource }, envFetchPending: totalFailure })
     setStatus(totalFailure ? 'deferred' : 'done')
   }
 
@@ -175,6 +175,16 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
   const subWind     = isLive ? t('s3_sub_live') : t('s3_sub_wind')
   const subSoil     = isLive ? t('s3_sub_soil_live') : t('s3_sub_soil_temp')
   const subSoilMoist= isLive ? t('s3_sub_soil_live') : t('s3_sub_soil_moisture')
+
+  // Which tier of the land-cover fallback chain actually answered — was
+  // previously a hardcoded "ESA WorldCover 2021" label regardless of source,
+  // which misrepresented the data's real provenance whenever WCS failed and
+  // the value actually came from the Overpass or Nominatim fallback.
+  const landCoverSubLabel = {
+    esa_worldcover: t('s3_sub_lc'),
+    overpass:        t('s3_sub_lc_overpass'),
+    nominatim:       t('s3_sub_lc_nominatim'),
+  }[form.landCoverSource] ?? t('s3_sub_lc')
 
   return (
     <div className="card">
@@ -252,7 +262,7 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
             onEdit={editField('elevation')}
           />
           <EnvItem
-            label={t('s3_landcover')} sub={t('s3_sub_lc')} loading={loading} type="text"
+            label={t('s3_landcover')} sub={landCoverSubLabel} loading={loading} type="text"
             value={form.landCover} displayValue={form.landCover}
             manual={manualFields.has('landCover')} manualLabel={t('s3_manual_entry')}
             onEdit={editField('landCover')}
