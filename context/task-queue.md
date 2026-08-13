@@ -54,6 +54,25 @@ Format: `[priority] Task title. Spec pointer`
 
 ## Done
 
+- [x] **[MEDIUM] Elevation API reliability + species no-match submission block** (2026-08-13)
+  Two user-reported issues fixed: (1) `Step1Specimen.jsx` blocked Next when iNaturalist returned a clean
+  zero-result response (typo or species not in their taxonomy) — now falls back to the typed text, same as
+  the existing fetch-failure path. (2) Elevation fetches were hanging indefinitely; confirmed directly via
+  repeated curl tests that `api.open-elevation.com`'s lookup endpoint was hanging with no response at all
+  (not a rate limit). Switched `fetchElevation()` to Open-Meteo (same host already used for weather, no key)
+  as primary, Open-Elevation kept as fallback. Also fixed the now-inaccurate "SRTM via Open-Elevation" sub-label
+  found while verifying. Verified in-browser both fixes end-to-end; `npm test` still passes (7/7).
+  → `context/state.md`, `src/utils/environmentApi.js`, `src/steps/Step1Specimen.jsx`, `src/i18n/index.jsx`
+
+- [x] **[LOW] Vitest + RTL setup, Step3Environment unit tests** (2026-08-12)
+  Added test infra (devDependency only) to check whether repeated field-report failures (Mapbox road / Overpass
+  water / ESA land cover all null at once) were a component bug vs. real API/network flakiness. 7 tests on
+  `Step3Environment.jsx` covering fetch-once-on-mount, success, partial failure, total failure → deferred,
+  offline short-circuit, remount skip, manual-field preservation on refetch — all passed against unmodified
+  code, no fixes needed. Confirms the component logic itself is correct; failures trace to the third-party
+  APIs. Run via `npm test`.
+  → `context/state.md`, `src/steps/Step3Environment.test.jsx`
+
 - [x] **[MEDIUM] Switch distance-to-road to Mapbox Tilequery + PWA update fix** (2026-08-12)
   After continued real, confirmed Overpass reliability failures (documented in the prior entry below),
   switched distance-to-road to Mapbox Tilequery API (`VITE_MAPBOX_TOKEN`, already had a token via the PI —
@@ -80,6 +99,22 @@ Format: `[priority] Task title. Spec pointer`
   labels), verified live showing "OSM Nominatim (fallback)" correctly for a location where WCS/Overpass both
   failed.
   → `context/state.md`, `memory/sessions/2026-08-11.md`
+
+- [x] **[LOW] BioARC App Evaluation Survey: new public multilingual Kobo project** (2026-08-12)
+  Separate from the specimen-collection app/asset. Source was `doc/BioARC_Survey_Printable_EN_ES_PT.docx`
+  (a print form for the workshop, no longer being printed). Its ES/PT sections were only partially
+  translated (title + intro only), so the full 8-question survey was translated properly into ES/PT and
+  built as a single EN/ES/PT-switchable XLSForm (`doc/BioARC_App_Evaluation_Survey_KoboForm.xlsx`), deployed
+  via the Kobo API using the existing `KOBO_API_KEY` (confirmed via `/me/` to belong to jiayuanj's own
+  account, not derekv. `KOBO_OWNER_USERNAME=derekv` in `.env` is unrelated, just the owner of the specimen
+  asset). No fields set as required, per instruction. Anonymous `add_submissions` permission granted so it's
+  publicly fillable without login. Live at https://ee.kobotoolbox.org/single/rwE4lztA (asset uid
+  `aYFTdq3NJ7cWebdhnwnDHV`). Q4 (5-statement Likert rating) implemented as a `field-list` group of
+  `select_one` questions sharing one choice list with `horizontal-compact` appearance: pyxform 4.5.0 no
+  longer supports the old `begin_score`/`score__row` XLSForm construct and 500-errored on deploy until
+  switched. Verified live in-browser (language switch, Likert grid, no required-field markers) via
+  claude-in-chrome. No test submissions were made to avoid polluting real response data.
+  → `doc/BioARC_App_Evaluation_Survey_KoboForm.xlsx`, `memory/sessions/2026-08-12.md`
 
 - [x] **[MEDIUM] Manual refetch icon for Step 3 environmental data** (2026-08-11)
   Fixes a real gap: correcting GPS in Step 2 and returning to Step 3 previously couldn't pull fresh env

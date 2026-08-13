@@ -4,13 +4,39 @@ const LUCC_CLASSES = {
   80: 'Permanent Water', 90: 'Herbaceous Wetland', 95: 'Mangroves', 100: 'Moss and Lichen',
 }
 
-export async function fetchElevation(lat, lng) {
+// Open-Meteo also runs a free, no-key elevation lookup (Copernicus GLO-90) on the
+// same host already used for weather. Tried first: repeated direct tests (both GET
+// and POST, 2026-08-12) found api.open-elevation.com's /lookup endpoint hanging with
+// no response at all (not a 429/503 — a dead connection), while Open-Meteo's answered
+// correctly in well under a second every time. Open-Elevation is kept as a fallback
+// rather than dropped outright, in case it recovers or the requested API key changes
+// its reliability later.
+async function fetchElevationOpenMeteo(lat, lng) {
+  const url = new URL('https://api.open-meteo.com/v1/elevation')
+  url.searchParams.set('latitude', lat)
+  url.searchParams.set('longitude', lng)
+  const res = await fetch(url, { signal: AbortSignal.timeout(10000) })
+  if (!res.ok) return null
+  const data = await res.json()
+  return data.elevation?.[0] ?? null
+}
+
+async function fetchElevationOpenElevation(lat, lng) {
   const res = await fetch(
-    `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`
+    `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`,
+    { signal: AbortSignal.timeout(10000) }
   )
-  if (!res.ok) throw new Error('Elevation fetch failed')
+  if (!res.ok) return null
   const data = await res.json()
   return data.results?.[0]?.elevation ?? null
+}
+
+export async function fetchElevation(lat, lng) {
+  const meteo = await fetchElevationOpenMeteo(lat, lng).catch(() => null)
+  if (meteo != null) return meteo
+  const openElevation = await fetchElevationOpenElevation(lat, lng).catch(() => null)
+  if (openElevation != null) return openElevation
+  throw new Error('Elevation fetch failed')
 }
 
 const DAILY_VARS = [

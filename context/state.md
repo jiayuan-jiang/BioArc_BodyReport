@@ -12,7 +12,7 @@ _Last updated: 2026-08-11_
 | Map | react-leaflet + leaflet | ^4.2.1 / ^1.9.4 |
 | Styling | Custom CSS (single index.css) | — |
 | Backend storage | KoboToolbox API v2 | — |
-| Elevation API | Open-Elevation (SRTM) | free, no key |
+| Elevation API | Open-Meteo (Copernicus GLO-90, primary) + Open-Elevation (SRTM, fallback) | free, no key |
 | Weather API | Open-Meteo archive | free, no key |
 | Land cover API | ESA WorldCover WCS + OSM Overpass fallback | free, no key |
 | Distance to road API | Mapbox Tilequery | free tier (100k/mo), needs `VITE_MAPBOX_TOKEN` |
@@ -265,6 +265,30 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
   once, navigated Back to Step 2 then Next to Step 3, confirmed the refetch icon and success banner both
   persisted immediately with the same data (no unnecessary re-fetch).
 
+- [x] **Species search: no iNaturalist match no longer blocks submission** (2026-08-13). A clean
+  autocomplete response with zero results (species not in iNaturalist's taxonomy, or a typo) previously
+  left `form.speciesSci` empty forever, since `clearSelection()` wipes it on every keystroke and only a
+  dropdown click or a genuine fetch *failure* ever set it back. `validate()` in `Step1Specimen.jsx` then
+  blocked Next with the required-field error. Fixed by falling back to the typed text on a zero-result
+  success response too, exactly like the existing fetch-failure fallback. Verified in-browser: typed a
+  nonsense species name, confirmed "No species found" showed, selected Frozen, clicked Next, form advanced
+  to Step 2 normally.
+- [x] **Elevation switched from Open-Elevation to Open-Meteo (primary) + Open-Elevation (fallback)**
+  (2026-08-13). User reported unstable elevation fetches; investigated directly rather than guessing.
+  Repeated live tests (both GET and the documented POST form) against `api.open-elevation.com/api/v1/lookup`
+  all hung with zero response for the full 10s timeout (`curl` exit 28, connection never resolved) — a real
+  backend outage/overload on their end, not a rate-limit (would 429) and not related to the API key the user
+  applied for (that's still pending, unrelated to this failure mode). Open-Meteo already runs a free, no-key
+  elevation endpoint (Copernicus GLO-90) on the same host this app already calls for weather, and answered
+  correctly in ~0.6s on every test. `fetchElevation()` in `environmentApi.js` now tries Open-Meteo first,
+  falling back to Open-Elevation only if that fails (kept rather than dropped, in case it recovers or the
+  pending API key changes its reliability). Also fixed a resulting mislabel: Step 3's Elevation card sub-label
+  was the static string "SRTM via Open-Elevation" (accurate when there was only one source, wrong now that
+  Open-Meteo answers almost every time) — updated to "Copernicus DEM via Open-Meteo" (4 languages) and
+  reordered/reworded the Sources footer citations to match. Verified in-browser end-to-end: elevation now
+  resolves (174m for a real test point) with the corrected source label, and `npm test` (7 tests) still
+  passes.
+
 ### In Progress
 (none)
 
@@ -296,6 +320,36 @@ Note: `KOBO_*` (no `VITE_` prefix) are never bundled into client JS — Vite onl
 - [ ] Multi-language UI — form already has EN/ES/FR/PT in KoboToolbox; React app is English only
 
 ### Known Issues
+- **Make.com "Integration Webhooks" scenario (Kobo → Gmail email alert) — photo attachment attempted and
+  reverted (2026-08-12).** Separate from this repo: a Make.com scenario (`Webhooks → Gmail`) sends an email
+  alert on every new Kobo submission, triggered by a Kobo REST Service hook (not by this app's code). Also
+  translated its Subject/Content from Chinese to English this session (done, working, verified live).
+  Attempted to also attach the submission's photo (from `_attachments[0].download_url`, which requires a
+  `Authorization: Token <KOBO_API_KEY>` header to download) via a `Webhooks → HTTP (Download a file) → Gmail`
+  chain. The with-photo case worked perfectly (verified live: HTTP downloaded the real file, Gmail sent with
+  attachment). The no-photo case does not: Make's HTTP module throws a hard `BundleValidationError` /
+  `TypeError` at the *bundle-validation* stage when the mapped URL evaluates to empty (accessing
+  `_attachments[1]` on an empty array), which is not something `Return error if HTTP request fails: No`
+  catches (that setting only covers HTTP response codes, not missing/invalid input parameters) — this
+  deactivates the whole scenario, breaking email alerts entirely until manually reactivated.
+  Tried three different conditional-URL formulas (`ifempty()`, `if(length()>0; ...)`, `get()` to avoid dot-
+  notation) typed directly into Make's formula bar to fall back to a dummy URL when no photo exists. **Real,
+  repeated finding: typing a formula that mixes literal syntax with a variable's dotted path (e.g.
+  `2._attachments[1].download_url`) into Make's rich-text formula editor does not reliably parse — confirmed
+  three times via blueprint export that the saved value was silently mangled in three different ways each
+  time** (dotted-path text turned into a literal string + `+` concatenation instead of property access;
+  stray extra bracket tokens from clicking pills at the wrong cursor position; string-escaping corruption).
+  Simple top-level `{{module.field}}` references (no wrapping function) reliably parse correctly — the bug is
+  specific to typed text *inside* a function call. Don't retry this via typed formulas without first testing
+  in a scratch field and verifying via blueprint export (not just the visual editor, which renders the
+  mangled result deceptively normally-looking in some cases).
+  Reverted cleanly: removed the HTTP module and Gmail's attachment mapping, back to the verified-working
+  text-only email (English Subject/Content, no attachment). Scenario is `Active` and stable.
+  **If revisiting:** the reliable path is either (a) build the conditional entirely via pill-clicks with zero
+  typed characters inside the function's parentheses (untested whether that's even fully possible for a
+  length-check), or (b) use a Router with two routes (filter on `_attachments` non/empty) and two separately-
+  configured Gmail modules — more clicks, but avoids Make's formula-bar typing bug entirely since each branch's
+  config is simple field-level mapping, not a nested expression.
 - **Fixed (2026-08-12): every uploaded photo showed as a broken image.** `Step1Specimen.jsx`'s `handleFiles`
   called `valid.map(compressImage)` — the classic `map` gotcha where the callback also receives `(index, array)`
   as extra arguments, which landed in `compressImage(file, maxDim = 1280, quality = 0.75)`'s `maxDim` and

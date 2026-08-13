@@ -124,6 +124,12 @@ export default function Step1Specimen({ form, update, onNext }) {
         const suggestions = await fetchSpeciesSuggestions(value.trim(), controller.signal)
         setResults(suggestions)
         setFetchError(false)
+        if (suggestions.length === 0) {
+          // A clean response with zero matches (e.g. a species not in iNaturalist's
+          // taxonomy, or a typo) must not block submission either. Fall back to the
+          // typed text, same as the fetch-failure branch below.
+          update({ speciesSci: value.trim(), speciesDisplay: value.trim() })
+        }
       } catch (e) {
         if (e.name !== 'AbortError') {
           setResults([])

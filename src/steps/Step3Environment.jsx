@@ -388,12 +388,12 @@ export default function Step3Environment({ form, update, onNext, onBack }) {
           </div>
           <ol className="env-sources-list">
             <li>
-              Open-Elevation. <em>SRTM digital elevation data.</em>{' '}
-              <a href="https://www.open-elevation.com/" target="_blank" rel="noopener noreferrer">open-elevation.com</a>
+              Open-Meteo. <em>Copernicus GLO-90 elevation, ERA5 / ERA5-Land reanalysis, and ICON/GFS forecast models.</em>{' '}
+              <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">open-meteo.com</a>
             </li>
             <li>
-              Open-Meteo. <em>ERA5 / ERA5-Land reanalysis and ICON/GFS forecast models.</em>{' '}
-              <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">open-meteo.com</a>
+              Open-Elevation. <em>SRTM digital elevation data (fallback if Open-Meteo is unavailable).</em>{' '}
+              <a href="https://www.open-elevation.com/" target="_blank" rel="noopener noreferrer">open-elevation.com</a>
             </li>
             <li>
               ESA WorldCover v200 (2021). <em>10m global land cover classification.</em>{' '}
